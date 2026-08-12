@@ -21,12 +21,12 @@ import EditProduct from './pages/dashboard/EditProduct';
 import MyProducts from './pages/dashboard/MyProducts';
 import MyShop from './pages/dashboard/MyShop';
 import MonProfil from './pages/dashboard/MonProfil';
-import { Orders, Messages, SettingsPage } from './pages/dashboard/PlaceholderPages';
+import Messages from './pages/dashboard/Messages';
+import { Orders, SettingsPage } from './pages/dashboard/PlaceholderPages';
 import Verification from './pages/dashboard/Verification';
 import AdminLayout from './components/AdminLayout';
 import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
-import AdminProducers from './pages/admin/Producers';
 import AdminVerificationsPage from './pages/admin/Verifications';
 import AdminCertifications from './pages/admin/Certifications';
 import AdminProducts from './pages/admin/Products';
@@ -81,18 +81,13 @@ export default function App() {
         {/* Admin routes (protected by admin role) */}
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
           <Route index element={<AdminDashboard />} />
-          <Route path="producteurs" element={<AdminProducers />} />
           <Route path="verifications" element={<AdminVerificationsPage />} />
           <Route path="certifications" element={<AdminCertifications />} />
-          <Route path="produits" element={<AdminProducts />} />
           <Route path="products" element={<AdminProducts />} />
-          <Route path="commandes" element={<AdminOrders />} />
           <Route path="orders" element={<AdminOrders />} />
-          <Route path="litiges" element={<AdminDisputes />} />
           <Route path="disputes" element={<AdminDisputes />} />
           <Route path="finances" element={<AdminFinances />} />
           <Route path="users" element={<AdminUsers />} />
-          <Route path="configuration" element={<AdminReports />} />
           <Route path="reports" element={<AdminReports />} />
         </Route>
       </Routes>

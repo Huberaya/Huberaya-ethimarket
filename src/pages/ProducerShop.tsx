@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Star, CheckCircle, Package, Zap, ArrowLeft, MessageSquare,
-  MapPin, Calendar, Users, Award, ArrowRight, Share2,
+  MapPin, Calendar, Users, Award, ArrowRight, Share2, Loader2,
 } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -10,6 +10,7 @@ import ProductCard from '../components/ProductCard';
 import { LeafletMap } from '../components/LeafletMap';
 import { supabase, type Producer, type Product } from '../lib/supabase';
 import ScoreBadge from '../components/ScoreBadge';
+import { useAuth } from '../lib/auth';
 
 function Skeleton() {
   return (
@@ -37,10 +38,80 @@ function Skeleton() {
 
 export default function ProducerShop() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [producer, setProducer] = useState<Producer | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState<'produits' | 'apropos'>('produits');
+  const [contacting, setContacting] = useState(false);
+
+  const handleContactProducer = async () => {
+    if (!user) {
+      navigate('/connexion');
+      return;
+    }
+
+    if (!producer?.user_id) {
+      alert('Producteur indisponible pour la messagerie.');
+      return;
+    }
+
+    if (producer.user_id === user.id) {
+      alert('Vous êtes le propriétaire de cette boutique !');
+      return;
+    }
+
+    setContacting(true);
+
+    try {
+      const sellerUserId = producer.user_id;
+
+      // Check existing conversation
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`and(participant_1.eq.${user.id},participant_2.eq.${sellerUserId}),and(participant_1.eq.${sellerUserId},participant_2.eq.${user.id})`)
+        .maybeSingle();
+
+      if (existing?.id) {
+        navigate(`/dashboard/messages?id=${existing.id}`);
+        return;
+      }
+
+      // Create new conversation
+      const initialText = `Bonjour, je souhaite entrer en contact avec votre boutique ${producer.name}.`;
+      const { data: newConv, error: convErr } = await supabase
+        .from('conversations')
+        .insert({
+          participant_1: user.id,
+          participant_2: sellerUserId,
+          last_message: initialText,
+          last_message_at: new Date().toISOString(),
+          unread_count_2: 1,
+        })
+        .select('id')
+        .single();
+
+      if (newConv?.id) {
+        await supabase.from('messages').insert({
+          conversation_id: newConv.id,
+          sender_id: user.id,
+          content: initialText,
+          type: 'text',
+        });
+
+        navigate(`/dashboard/messages?id=${newConv.id}`);
+      } else {
+        console.error('Error creating conversation:', convErr);
+        alert('Impossible de créer la conversation.');
+      }
+    } catch (err) {
+      console.error('Error contacting producer:', err);
+    } finally {
+      setContacting(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -168,8 +239,13 @@ export default function ProducerShop() {
 
                   {/* Action buttons */}
                   <div className="flex flex-wrap gap-3">
-                    <button className="btn-primary py-2.5 px-5 text-sm">
-                      <MessageSquare className="w-4 h-4" /> Envoyer un message
+                    <button
+                      onClick={handleContactProducer}
+                      disabled={contacting}
+                      className="btn-primary py-2.5 px-5 text-sm inline-flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {contacting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                      Envoyer un message
                     </button>
                     <Link to="/catalogue" className="btn-outline py-2.5 px-5 text-sm">
                       Voir le catalogue <ArrowRight className="w-4 h-4" />

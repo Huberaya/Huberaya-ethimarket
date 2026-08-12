@@ -43,6 +43,50 @@ function VerificationBadge({ producerId }: { producerId: string }) {
   return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${colors[status]}`}>{status === 'approved' ? '✓' : '!'}</span>;
 }
 
+function UnreadMessagesBadge({ userId }: { userId: string }) {
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const fetchUnread = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('conversations')
+      .select('participant_1, unread_count_1, unread_count_2')
+      .or(`participant_1.eq.${userId},participant_2.eq.${userId}`);
+
+    if (data) {
+      let total = 0;
+      for (const conv of data) {
+        if (conv.participant_1 === userId) total += conv.unread_count_1 || 0;
+        else total += conv.unread_count_2 || 0;
+      }
+      setUnreadCount(total);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnread();
+
+    const channel = supabase
+      .channel(`unread-nav:${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
+        fetchUnread();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  if (unreadCount <= 0) return null;
+
+  return (
+    <span className="bg-brand-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full animate-pulse">
+      {unreadCount}
+    </span>
+  );
+}
+
 export default function DashboardLayout() {
   const { user, profile, producer, signOut } = useAuth();
   const location = useLocation();
@@ -107,6 +151,9 @@ export default function DashboardLayout() {
                   <span className="flex-1 text-left">{label}</span>
                   {path === '/dashboard/verification' && producer && (
                     <VerificationBadge producerId={producer.id} />
+                  )}
+                  {path === '/dashboard/messages' && user && (
+                    <UnreadMessagesBadge userId={user.id} />
                   )}
                 </Link>
               </li>
