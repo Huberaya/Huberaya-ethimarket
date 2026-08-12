@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS products (
   emoji text NOT NULL DEFAULT '🌿',
   bg_color text NOT NULL DEFAULT '#dcfce7',
   image_url text,
+  batch_number text,
   featured boolean DEFAULT false,
   top_seller boolean DEFAULT false,
   created_at timestamptz DEFAULT now()

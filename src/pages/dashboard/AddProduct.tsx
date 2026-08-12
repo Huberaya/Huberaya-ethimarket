@@ -287,7 +287,28 @@ export default function AddProduct() {
 
       const cleanedProductData = cleanPayload(rawProductData);
 
-      const { error: insertErr } = await supabase.from('products').insert(cleanedProductData);
+      let { error: insertErr } = await supabase.from('products').insert(cleanedProductData);
+
+      // Graceful fallback if certain columns (like batch_number or optional fields) do not exist in the database schema yet
+      if (insertErr && (insertErr.message.includes('column') || insertErr.message.includes('batch_number'))) {
+        const { batch_number, ...withoutBatch } = cleanedProductData as Record<string, any>;
+        const retry1 = await supabase.from('products').insert(withoutBatch);
+        insertErr = retry1.error;
+
+        if (insertErr && insertErr.message.includes('column')) {
+          const {
+            planting_date,
+            harvest_date,
+            packaging_date,
+            farming_method,
+            gps_coordinates,
+            co2_estimate,
+            ...corePayload
+          } = withoutBatch;
+          const retry2 = await supabase.from('products').insert(corePayload);
+          insertErr = retry2.error;
+        }
+      }
 
       if (insertErr) {
         throw new Error('Erreur lors de la sauvegarde du produit: ' + insertErr.message);
