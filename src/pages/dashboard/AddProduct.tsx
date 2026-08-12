@@ -285,33 +285,31 @@ export default function AddProduct() {
         batch_number: toStringOrNull(form.batch_number),
       };
 
-      const cleanedProductData = cleanPayload(rawProductData);
+      let payloadToInsert: Record<string, any> = cleanPayload(rawProductData);
+      let insertResult = await supabase.from('products').insert(payloadToInsert);
 
-      let { error: insertErr } = await supabase.from('products').insert(cleanedProductData);
+      // Dynamic fallback: If Supabase throws an error about a missing column in the schema cache or database,
+      // extract the missing column name, strip it from the payload, and retry automatically.
+      let maxAttempts = 20;
+      while (insertResult.error && maxAttempts > 0) {
+        const errMsg = insertResult.error.message || '';
+        const match =
+          errMsg.match(/Could not find the '([^']+)' column/i) ||
+          errMsg.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
+          errMsg.match(/column ["']([^"']+)["']/i);
 
-      // Graceful fallback if certain columns (like batch_number or optional fields) do not exist in the database schema yet
-      if (insertErr && (insertErr.message.includes('column') || insertErr.message.includes('batch_number'))) {
-        const { batch_number, ...withoutBatch } = cleanedProductData as Record<string, any>;
-        const retry1 = await supabase.from('products').insert(withoutBatch);
-        insertErr = retry1.error;
-
-        if (insertErr && insertErr.message.includes('column')) {
-          const {
-            planting_date,
-            harvest_date,
-            packaging_date,
-            farming_method,
-            gps_coordinates,
-            co2_estimate,
-            ...corePayload
-          } = withoutBatch;
-          const retry2 = await supabase.from('products').insert(corePayload);
-          insertErr = retry2.error;
+        if (match && match[1] && match[1] in payloadToInsert) {
+          const missingColumn = match[1];
+          delete payloadToInsert[missingColumn];
+          insertResult = await supabase.from('products').insert(payloadToInsert);
+          maxAttempts--;
+        } else {
+          break;
         }
       }
 
-      if (insertErr) {
-        throw new Error('Erreur lors de la sauvegarde du produit: ' + insertErr.message);
+      if (insertResult.error) {
+        throw new Error('Erreur lors de la sauvegarde du produit: ' + insertResult.error.message);
       }
 
       // Navigate back to product list with success message
