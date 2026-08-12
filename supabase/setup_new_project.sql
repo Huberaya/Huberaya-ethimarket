@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   company text,
   phone text,
   role text NOT NULL DEFAULT 'buyer' CHECK (role IN ('buyer', 'producer', 'admin')),
+  is_admin boolean DEFAULT false,
   avatar_url text,
   created_at timestamptz DEFAULT now()
 );

@@ -3,21 +3,20 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ShieldCheck, Award, Package, ShoppingCart,
   AlertTriangle, Wallet, Users, FileBarChart, Bell, Menu, X,
-  LogOut, ChevronDown, Leaf,
+  LogOut, ChevronDown, Leaf, Settings
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { supabase, type AdminNotification } from '../lib/supabase';
 
 const NAV = [
   { to: '/admin', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
+  { to: '/admin/producteurs', label: 'Producteurs', icon: Users },
   { to: '/admin/verifications', label: 'Vérifications', icon: ShieldCheck },
-  { to: '/admin/certifications', label: 'Certifications', icon: Award },
-  { to: '/admin/products', label: 'Produits', icon: Package },
-  { to: '/admin/orders', label: 'Commandes', icon: ShoppingCart },
-  { to: '/admin/disputes', label: 'Litiges', icon: AlertTriangle },
+  { to: '/admin/produits', label: 'Produits', icon: Package },
+  { to: '/admin/commandes', label: 'Commandes', icon: ShoppingCart },
+  { to: '/admin/litiges', label: 'Litiges', icon: AlertTriangle },
   { to: '/admin/finances', label: 'Finances', icon: Wallet },
-  { to: '/admin/users', label: 'Utilisateurs', icon: Users },
-  { to: '/admin/reports', label: 'Rapports', icon: FileBarChart },
+  { to: '/admin/configuration', label: 'Configuration', icon: Settings },
 ] as const;
 
 const NOTIF_ICONS: Record<string, { icon: typeof Bell; color: string; bg: string }> = {
