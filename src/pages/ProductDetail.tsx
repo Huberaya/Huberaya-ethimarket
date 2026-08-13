@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Star, Heart, Minus, Plus, ChevronRight, CheckCircle,
   Package, MapPin, Clock, Truck, Award,
-  QrCode, ZoomIn, MessageSquare, Loader2
+  QrCode, ZoomIn, ShieldCheck, UserCheck, MessageSquare
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 import ScoreBadge from '../components/ScoreBadge';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { supabase, type Product, type Producer, type Review } from '../lib/supabase';
-import { useAuth } from '../lib/auth';
 import GuaranteesSection from '../components/product/GuaranteesSection';
 import TraceabilitySection from '../components/product/TraceabilitySection';
 import ProducerProfileSection from '../components/product/ProducerProfileSection';
@@ -20,6 +20,18 @@ import DeliverySection from '../components/product/DeliverySection';
 import ReviewsSection from '../components/product/ReviewsSection';
 import FAQSection from '../components/product/FAQSection';
 import StickyActions from '../components/product/StickyActions';
+import {
+  calculateEthiMarketScore,
+  calculateVolumeDiscounts,
+  calculateEnvironmentalImpact,
+  calculateEconomicImpact,
+  calculateSocialImpact,
+  calculateShipping,
+  calculateCustomsAndVAT,
+  calculateOrderTotal,
+  checkEUConformity,
+  calculateProfileCompletion
+} from '../lib/calculations';
 
 const CERT_BADGE: Record<string, string> = {
   Bio: 'badge-bio', Fairtrade: 'badge-fairtrade', Ecocert: 'badge-ecocert',
@@ -47,7 +59,9 @@ function Skeleton() {
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,74 +72,6 @@ export default function ProductDetail() {
   const [favorited, setFavorited] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [contacting, setContacting] = useState(false);
-
-  const handleContactSeller = async () => {
-    if (!user) {
-      navigate('/connexion');
-      return;
-    }
-
-    const producer = (product as Product & { producers?: Producer }).producers;
-    const sellerUserId = producer?.user_id;
-
-    if (!sellerUserId) {
-      alert('Producteur indisponible pour la messagerie.');
-      return;
-    }
-
-    if (sellerUserId === user.id) {
-      alert('Vous êtes le propriétaire de ce produit !');
-      return;
-    }
-
-    setContacting(true);
-
-    try {
-      // Find existing conversation
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
-        .or(`and(participant_1.eq.${user.id},participant_2.eq.${sellerUserId}),and(participant_1.eq.${sellerUserId},participant_2.eq.${user.id})`)
-        .maybeSingle();
-
-      if (existing?.id) {
-        navigate(`/dashboard/messages?id=${existing.id}`);
-        return;
-      }
-
-      // Create conversation
-      const initialText = `Bonjour, je suis intéressé(e) par votre produit : ${product?.name}.`;
-      const { data: newConv, error: convErr } = await supabase
-        .from('conversations')
-        .insert({
-          participant_1: user.id,
-          participant_2: sellerUserId,
-          last_message: initialText,
-          last_message_at: new Date().toISOString(),
-          unread_count_2: 1,
-        })
-        .select('id')
-        .single();
-
-      if (newConv?.id) {
-        await supabase.from('messages').insert({
-          conversation_id: newConv.id,
-          sender_id: user.id,
-          content: initialText,
-          type: 'text',
-        });
-
-        navigate(`/dashboard/messages?id=${newConv.id}`);
-      } else {
-        console.error('Error creating conversation:', convErr);
-        alert('Impossible de créer la conversation.');
-      }
-    } catch (err) {
-      console.error('Error contacting seller:', err);
-    } finally {
-      setContacting(false);
-    }
-  };
 
   useEffect(() => {
     if (!id) return;
@@ -165,17 +111,87 @@ export default function ProductDetail() {
   const baseImage = product.image_url && !imgError ? product.image_url : null;
   const gallery = baseImage ? [baseImage, baseImage, baseImage, baseImage, baseImage] : null;
 
-  const priceTiers = [
-    { range: `${product.moq_value}–${product.moq_value * 5 - 1} ${product.moq_unit}`, price: product.price, eco: null },
-    { range: `${product.moq_value * 5}–${product.moq_value * 25 - 1} ${product.moq_unit}`, price: +(product.price * 0.89).toFixed(2), eco: '-11%' },
-    { range: `${product.moq_value * 25}+ ${product.moq_unit}`, price: +(product.price * 0.79).toFixed(2), eco: '-21%' },
-    { range: `${product.moq_value * 50}+ ${product.moq_unit}`, price: null, eco: 'Sur devis' },
-  ];
+  // 1. Automatic calculations from calculations engine
+  const scoreResult = calculateEthiMarketScore(producer);
+  const ethiScore = producer?.ethimarket_score && producer.ethimarket_score > 0 ? producer.ethimarket_score : scoreResult.score;
+  const producerBadge = producer?.badge_level ?? scoreResult.badge;
+  const scoreDetails = producer?.score_details ?? {
+    total: ethiScore,
+    badge: producerBadge,
+    categories: {
+      certifications: { score: scoreResult.breakdown.certifications, max: 40 },
+      traceability: { score: scoreResult.breakdown.traceability, max: 25 },
+      ethics: { score: scoreResult.breakdown.ethics, max: 20 },
+      environment: { score: scoreResult.breakdown.environment, max: 10 },
+      satisfaction: { score: scoreResult.breakdown.satisfaction, max: 5 },
+    },
+    penalties: { total: 0, items: [] }
+  };
 
-  // EthiMarket score from database (computed by scoring system)
-  const ethiScore = producer?.ethimarket_score ?? 0;
-  const producerBadge = producer?.badge_level ?? null;
-  const scoreDetails = producer?.score_details ?? null;
+  // 2. Dynamic volume discounts
+  const volumeDiscounts = calculateVolumeDiscounts(product.price, product.price_unit);
+
+  // 9. EU Conformity
+  const euConformity = checkEUConformity(producer, product);
+
+  // 10. Profile completion
+  const profileCompletion = calculateProfileCompletion(producer);
+
+  const handleContactSeller = async () => {
+    if (!user) {
+      navigate(`/connexion?redirect=${encodeURIComponent(location.pathname)}`);
+      return;
+    }
+
+    const recipientUserId = producer?.user_id;
+    if (!recipientUserId) {
+      alert("Le profil du vendeur n'est pas encore configuré pour recevoir des messages directs.");
+      return;
+    }
+
+    if (user.id === recipientUserId) {
+      alert("Vous êtes le propriétaire de ce produit.");
+      return;
+    }
+
+    setContacting(true);
+
+    try {
+      // Find existing conversation
+      const { data: existingConvs } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`and(participant_1.eq.${user.id},participant_2.eq.${recipientUserId}),and(participant_1.eq.${recipientUserId},participant_2.eq.${user.id})`);
+
+      if (existingConvs && existingConvs.length > 0) {
+        navigate(`/dashboard/messages?conversation=${existingConvs[0].id}`);
+        return;
+      }
+
+      // Create new conversation
+      const { data: newConv, error: createErr } = await supabase
+        .from('conversations')
+        .insert({
+          participant_1: user.id,
+          participant_2: recipientUserId,
+          last_message: `Demande au sujet de : ${product.name}`,
+          last_message_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (createErr || !newConv) {
+        throw createErr || new Error('Erreur de création de la conversation');
+      }
+
+      navigate(`/dashboard/messages?conversation=${newConv.id}`);
+    } catch (err) {
+      console.error('Contact seller error:', err);
+      alert('Impossible d\'ouvrir la conversation avec le vendeur.');
+    } finally {
+      setContacting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white pb-20 lg:pb-0">
@@ -251,12 +267,24 @@ export default function ProductDetail() {
 
           {/* Info */}
           <div>
-            {/* Producer link */}
-            {producer && (
-              <Link to={`/boutique/${producer.slug}`} className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700 font-semibold mb-3 hover:underline">
-                <Award className="w-4 h-4" /> {producer.name}
-              </Link>
-            )}
+            {/* Producer link & Badges */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              {producer && (
+                <Link to={`/boutique/${producer.slug}`} className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700 font-semibold hover:underline">
+                  <Award className="w-4 h-4" /> {producer.name}
+                </Link>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  {euConformity.is_conform ? 'Conforme UE' : 'En cours de vérification UE'}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                  <UserCheck className="w-3 h-3 text-blue-600" />
+                  Profil complété : {profileCompletion}%
+                </span>
+              </div>
+            </div>
 
             <h1 className="text-3xl sm:text-4xl font-black text-gray-900 mb-3 leading-tight">{product.name}</h1>
 
@@ -296,28 +324,40 @@ export default function ProductDetail() {
                 <span className="text-4xl font-black text-gray-900">{product.price.toFixed(2)} €</span>
                 <span className="text-lg text-gray-400 font-medium">/{product.price_unit}</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Prix dégressifs disponibles selon volume</p>
+              <p className="text-xs text-gray-500 mt-1">Prix dégressifs automatiques selon le volume commandé</p>
             </div>
 
-            {/* Price tiers */}
+            {/* Volume Price Tiers */}
             <div className="rounded-2xl overflow-hidden border border-gray-200 mb-5">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Quantité</th>
-                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Prix</th>
-                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Économie</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Volume ({product.price_unit})</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Prix Unitaire</th>
+                    <th className="text-left py-2.5 px-4 text-xs font-bold text-gray-500 uppercase">Remise</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {priceTiers.map((tier, i) => (
+                  {volumeDiscounts.map((tier, i) => (
                     <tr key={i} className={`border-b border-gray-100 last:border-0 ${i === 0 ? 'bg-brand-50' : 'hover:bg-gray-50'} transition-colors`}>
-                      <td className="py-3 px-4 text-gray-700 font-medium text-xs">{tier.range}</td>
-                      <td className="py-3 px-4 font-bold text-gray-900">{tier.price !== null ? `${tier.price.toFixed(2)} €/${product.price_unit}` : '—'}</td>
+                      <td className="py-3 px-4 text-gray-700 font-medium text-xs">
+                        {tier.max ? `${tier.min} – ${tier.max}` : `${tier.min}+`}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-gray-900">
+                        {tier.price !== null ? `${tier.price.toFixed(2)} € / ${product.price_unit}` : 'Sur devis'}
+                      </td>
                       <td className="py-3 px-4">
-                        {tier.eco === 'Sur devis' ? <span className="text-brand-600 font-bold text-xs">Sur devis</span>
-                          : tier.eco ? <span className="text-brand-600 font-bold text-xs bg-brand-50 px-2 py-0.5 rounded-full">{tier.eco}</span>
-                          : <span className="text-gray-400 text-xs">—</span>}
+                        {tier.discount !== null ? (
+                          tier.discount > 0 ? (
+                            <span className="text-brand-600 font-bold text-xs bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
+                              -{tier.discount}%
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Prix standard</span>
+                          )
+                        ) : (
+                          <span className="text-brand-600 font-bold text-xs">Sur devis</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -359,10 +399,10 @@ export default function ProductDetail() {
               <button
                 onClick={handleContactSeller}
                 disabled={contacting}
-                className="btn-outline flex-1 py-3.5 text-base inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                className="btn-outline flex-1 py-3.5 text-base inline-flex items-center justify-center gap-2 hover:bg-brand-50 hover:text-brand-700 transition-colors"
               >
-                {contacting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-                💬 Contacter le vendeur
+                <MessageSquare className="w-4 h-4 text-brand-600" />
+                {contacting ? 'Ouverture...' : '💬 Contacter le vendeur'}
               </button>
             </div>
             <button onClick={() => setFavorited(f => !f)} className={`flex items-center gap-2 text-sm font-semibold w-full justify-center py-2.5 rounded-xl transition-all border-2 ${favorited ? 'border-red-200 text-red-500 bg-red-50' : 'border-gray-200 text-gray-500 hover:border-red-200 hover:text-red-400 hover:bg-red-50'}`}>
@@ -388,7 +428,7 @@ export default function ProductDetail() {
         <GuaranteesSection product={product} producer={producer} />
         <TraceabilitySection product={product} />
         <ProducerProfileSection producer={producer} />
-        <ImpactSection product={product} quantity={qty} />
+        <ImpactSection product={product} producer={producer} quantity={qty} />
         <TechnicalDetailsSection product={product} />
         <DeliverySection product={product} quantity={qty} />
         <ReviewsSection product={product} reviews={reviews} />

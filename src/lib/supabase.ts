@@ -17,6 +17,7 @@ export type Profile = {
   country: string | null;
   city: string | null;
   role: string;
+  is_admin?: boolean;
   avatar_url: string | null;
   created_at: string;
 };
@@ -154,29 +155,6 @@ export type ScoreDetails = {
     satisfaction: ScoreCategory;
   };
   penalties: { total: number };
-};
-
-export type Conversation = {
-  id: string;
-  participant_1: string;
-  participant_2: string;
-  last_message: string | null;
-  last_message_at: string;
-  unread_count_1: number;
-  unread_count_2: number;
-  created_at: string;
-};
-
-export type Message = {
-  id: string;
-  conversation_id: string;
-  sender_id: string;
-  content: string;
-  type: 'text' | 'file' | 'image' | string;
-  file_url?: string | null;
-  file_name?: string | null;
-  read_at?: string | null;
-  created_at: string;
 };
 
 export type Product = {
@@ -412,3 +390,27 @@ export type AdminAuditLog = {
   details: Record<string, unknown>;
   created_at: string;
 };
+
+export type Conversation = {
+  id: string;
+  participant_1: string;
+  participant_2: string;
+  last_message: string | null;
+  last_message_at: string;
+  unread_count_1: number;
+  unread_count_2: number;
+  created_at: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  type?: 'text' | 'file' | 'image';
+  file_url?: string | null;
+  file_name?: string | null;
+  read_at?: string | null;
+  created_at: string;
+};
+

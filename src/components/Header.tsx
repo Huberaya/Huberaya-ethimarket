@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Leaf } from 'lucide-react';
+import { Menu, X, Leaf, ShieldCheck, User } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 const NAV_LINKS = [
   { label: 'Catalogue', href: '/catalogue' },
@@ -13,7 +14,10 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { user, profile } = useAuth();
   const isHome = location.pathname === '/';
+
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin' || user?.email === 'bayahubert@yahoo.com';
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -68,22 +72,45 @@ export default function Header() {
 
           {/* Actions desktop */}
           <div className="hidden lg:flex items-center gap-2">
-            <Link
-              to="/connexion"
-              className={`px-4 py-2 text-sm font-semibold rounded-xl border-2 transition-all ${
-                transparent
-                  ? 'border-white/60 text-white hover:bg-white/10'
-                  : 'border-brand-500 text-brand-600 hover:bg-brand-50'
-              }`}
-            >
-              Se connecter
-            </Link>
-            <Link
-              to="/inscription"
-              className="px-4 py-2 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors shadow-sm"
-            >
-              S'inscrire
-            </Link>
+            {user ? (
+              <>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-600" />
+                    Admin
+                  </Link>
+                )}
+                <Link
+                  to="/dashboard"
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors shadow-sm"
+                >
+                  <User className="w-4 h-4" />
+                  Mon Espace
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/connexion"
+                  className={`px-4 py-2 text-sm font-semibold rounded-xl border-2 transition-all ${
+                    transparent
+                      ? 'border-white/60 text-white hover:bg-white/10'
+                      : 'border-brand-500 text-brand-600 hover:bg-brand-50'
+                  }`}
+                >
+                  Se connecter
+                </Link>
+                <Link
+                  to="/inscription"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors shadow-sm"
+                >
+                  S'inscrire
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile toggle */}
@@ -111,13 +138,28 @@ export default function Header() {
               {label}
             </Link>
           ))}
-          <div className="flex gap-2 pt-3 border-t border-gray-100 mt-2">
-            <Link to="/connexion" className="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-brand-600 border-2 border-brand-500 rounded-xl hover:bg-brand-50 transition-colors">
-              Se connecter
-            </Link>
-            <Link to="/inscription" className="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors">
-              S'inscrire
-            </Link>
+          <div className="flex flex-col gap-2 pt-3 border-t border-gray-100 mt-2">
+            {user ? (
+              <>
+                {isAdmin && (
+                  <Link to="/admin" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
+                    <ShieldCheck className="w-4 h-4 text-amber-600" /> Administration
+                  </Link>
+                )}
+                <Link to="/dashboard" className="w-full text-center px-4 py-2.5 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors">
+                  Mon Espace
+                </Link>
+              </>
+            ) : (
+              <div className="flex gap-2">
+                <Link to="/connexion" className="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-brand-600 border-2 border-brand-500 rounded-xl hover:bg-brand-50 transition-colors">
+                  Se connecter
+                </Link>
+                <Link to="/inscription" className="flex-1 text-center px-4 py-2.5 text-sm font-semibold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors">
+                  S'inscrire
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

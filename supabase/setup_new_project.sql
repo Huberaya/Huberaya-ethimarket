@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   company text,
   phone text,
   role text NOT NULL DEFAULT 'buyer' CHECK (role IN ('buyer', 'producer', 'admin')),
+  is_admin boolean DEFAULT false,
   avatar_url text,
   created_at timestamptz DEFAULT now()
 );
@@ -138,6 +139,19 @@ CREATE TABLE IF NOT EXISTS products (
   emoji text NOT NULL DEFAULT '🌿',
   bg_color text NOT NULL DEFAULT '#dcfce7',
   image_url text,
+  user_id uuid DEFAULT auth.uid(),
+  short_description text,
+  region text,
+  currency text DEFAULT 'EUR',
+  status text DEFAULT 'active',
+  batch_number text,
+  planting_date date,
+  harvest_date date,
+  packaging_date date,
+  farming_method text,
+  gps_coordinates text,
+  co2_estimate text,
+  trace_qr_code text,
   featured boolean DEFAULT false,
   top_seller boolean DEFAULT false,
   created_at timestamptz DEFAULT now()
@@ -350,15 +364,107 @@ INSERT INTO articles (title, slug, excerpt, category, image_url, author_name, au
 ON CONFLICT (slug) DO NOTHING;
 
 
+-- ─── BUCKETS DE STOCKAGE SUPABASE (STORAGE) ──────────────────────
+-- Création des 3 buckets nécessaires aux téléversements d'images et documents
+INSERT INTO storage.buckets (id, name, public) VALUES ('stores', 'stores', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('products', 'products', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('verifications', 'verifications', true) ON CONFLICT (id) DO NOTHING;
+
+-- Politiques de lecture publique (SELECT)
+DROP POLICY IF EXISTS "Public Read Access for Stores" ON storage.objects;
+CREATE POLICY "Public Read Access for Stores" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'stores');
+
+DROP POLICY IF EXISTS "Public Read Access for Products" ON storage.objects;
+CREATE POLICY "Public Read Access for Products" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'products');
+
+DROP POLICY IF EXISTS "Public Read Access for Verifications" ON storage.objects;
+CREATE POLICY "Public Read Access for Verifications" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'verifications');
+
+-- Politiques d'upload et de modification (INSERT, UPDATE)
+DROP POLICY IF EXISTS "Allow upload to Stores" ON storage.objects;
+CREATE POLICY "Allow upload to Stores" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'stores');
+
+DROP POLICY IF EXISTS "Allow upload to Products" ON storage.objects;
+CREATE POLICY "Allow upload to Products" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'products');
+
+DROP POLICY IF EXISTS "Allow upload to Verifications" ON storage.objects;
+CREATE POLICY "Allow upload to Verifications" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'verifications');
+
+DROP POLICY IF EXISTS "Allow update to Stores" ON storage.objects;
+CREATE POLICY "Allow update to Stores" ON storage.objects FOR UPDATE TO anon, authenticated USING (bucket_id = 'stores');
+
+DROP POLICY IF EXISTS "Allow update to Products" ON storage.objects;
+CREATE POLICY "Allow update to Products" ON storage.objects FOR UPDATE TO anon, authenticated USING (bucket_id = 'products');
+
+DROP POLICY IF EXISTS "Allow update to Verifications" ON storage.objects;
+CREATE POLICY "Allow update to Verifications" ON storage.objects FOR UPDATE TO anon, authenticated USING (bucket_id = 'verifications');
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- MESSAGERIE PRODUCTEUR-ACHETEUR
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  participant_1 UUID REFERENCES auth.users(id),
+  participant_2 UUID REFERENCES auth.users(id),
+  last_message TEXT,
+  last_message_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  unread_count_1 INTEGER DEFAULT 0,
+  unread_count_2 INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(participant_1, participant_2)
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES auth.users(id),
+  content TEXT NOT NULL,
+  type TEXT DEFAULT 'text',
+  file_url TEXT,
+  file_name TEXT,
+  read_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users see own conversations" ON conversations;
+CREATE POLICY "Users see own conversations" ON conversations FOR SELECT USING (auth.uid() = participant_1 OR auth.uid() = participant_2);
+
+DROP POLICY IF EXISTS "Users create conversations" ON conversations;
+CREATE POLICY "Users create conversations" ON conversations FOR INSERT WITH CHECK (auth.uid() = participant_1);
+
+DROP POLICY IF EXISTS "Users update own conversations" ON conversations;
+CREATE POLICY "Users update own conversations" ON conversations FOR UPDATE USING (auth.uid() = participant_1 OR auth.uid() = participant_2);
+
+DROP POLICY IF EXISTS "Users see conversation messages" ON messages;
+CREATE POLICY "Users see conversation messages" ON messages FOR SELECT USING (
+  conversation_id IN (SELECT id FROM conversations WHERE participant_1 = auth.uid() OR participant_2 = auth.uid())
+);
+
+DROP POLICY IF EXISTS "Users send messages" ON messages;
+CREATE POLICY "Users send messages" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+DROP POLICY IF EXISTS "Users update own messages" ON messages;
+CREATE POLICY "Users update own messages" ON messages FOR UPDATE USING (auth.uid() = sender_id);
+
+INSERT INTO storage.buckets (id, name, public) VALUES ('chat-files', 'chat-files', true) ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Authenticated users upload chat files" ON storage.objects;
+CREATE POLICY "Authenticated users upload chat files" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'chat-files');
+
+DROP POLICY IF EXISTS "Users read chat files" ON storage.objects;
+CREATE POLICY "Users read chat files" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'chat-files');
+
 -- ═══════════════════════════════════════════════════════════════
 -- FIN DU SCRIPT
 -- ═══════════════════════════════════════════════════════════════
+
 -- Vérifiez que tout s''est bien exécuté sans erreur.
 -- Vous devriez avoir :
 --   7 tables : profiles, categories, producers, products, reviews, orders, articles
---   8 catégories
---   6 producteurs
---   12 produits
---   10 avis
---   10 articles
+--   3 buckets de stockage : stores, products, verifications
 -- ═══════════════════════════════════════════════════════════════

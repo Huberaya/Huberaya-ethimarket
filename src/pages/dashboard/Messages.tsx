@@ -1,320 +1,333 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, MessageSquare, ShieldCheck, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { Search, MessageSquare, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import { supabase, type Conversation, type Profile, type Producer } from '../../lib/supabase';
-import ChatView from './ChatView';
+import { supabase, type Conversation, type Producer, type Profile } from '../../lib/supabase';
+import { ChatView } from './ChatView';
 
-interface ConversationItem {
-  conversation: Conversation;
-  interlocutorName: string;
-  interlocutorInitials: string;
-  interlocutorColor: string;
-  interlocutorAvatar?: string | null;
-  interlocutorCountry?: string | null;
-  interlocutorFlag?: string | null;
-  isVerifiedProducer: boolean;
+type InterlocutorInfo = {
+  id: string;
+  name: string;
+  email?: string;
+  avatar_initials?: string;
+  avatar_color?: string;
+  avatar_url?: string | null;
+  country?: string | null;
+  country_flag?: string | null;
+  is_verified?: boolean;
+  producer_slug?: string | null;
+  role?: string;
+};
+
+type ConversationWithMeta = Conversation & {
+  interlocutor: InterlocutorInfo | null;
   unreadCount: number;
-}
+};
 
 export default function MessagesPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeParamId = searchParams.get('id') || searchParams.get('conversation');
+  const targetConvId = searchParams.get('conversation');
 
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(activeParamId);
+  const [search, setSearch] = useState('');
+  const [activeConvId, setActiveConvId] = useState<string | null>(targetConvId);
 
-  // Sync state if URL query param changes
-  useEffect(() => {
-    if (activeParamId) {
-      setSelectedConversationId(activeParamId);
-    }
-  }, [activeParamId]);
-
-  // Load conversations
-  const loadConversations = async () => {
+  // Fetch conversations and resolve interlocutor details
+  const fetchConversations = useCallback(async () => {
     if (!user) return;
 
-    try {
-      // Query conversations involving current user
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-        .order('last_message_at', { ascending: false });
+    // Fetch user's conversations
+    const { data: convsData, error: convErr } = await supabase
+      .from('conversations')
+      .select('*')
+      .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+      .order('last_message_at', { ascending: false });
 
-      if (error || !data) {
-        setLoading(false);
-        return;
-      }
-
-      const convList = data as Conversation[];
-
-      // Gather interlocutor user IDs
-      const interlocutorIds = convList.map(c => c.participant_1 === user.id ? c.participant_2 : c.participant_1);
-
-      if (interlocutorIds.length === 0) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch profiles & producers for all interlocutors
-      const [{ data: profiles }, { data: producers }] = await Promise.all([
-        supabase.from('profiles').select('*').in('id', interlocutorIds),
-        supabase.from('producers').select('*').in('user_id', interlocutorIds),
-      ]);
-
-      const profMap = new Map((profiles as Profile[] || []).map(p => [p.id, p]));
-      const prodMap = new Map((producers as Producer[] || []).map(p => [p.user_id!, p]));
-
-      const items: ConversationItem[] = convList.map(conv => {
-        const interlocutorId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
-        const prof = profMap.get(interlocutorId);
-        const prod = prodMap.get(interlocutorId);
-
-        const name = prod?.name || prof?.full_name || prof?.company || prof?.email?.split('@')[0] || 'Utilisateur';
-        const initials = prod?.avatar_initials || name.slice(0, 2).toUpperCase();
-        const color = prod?.avatar_color || '#15803d';
-        const isParticipant1 = conv.participant_1 === user.id;
-        const unread = isParticipant1 ? conv.unread_count_1 : conv.unread_count_2;
-
-        return {
-          conversation: conv,
-          interlocutorName: name,
-          interlocutorInitials: initials,
-          interlocutorColor: color,
-          interlocutorAvatar: prof?.avatar_url || prod?.logo_url,
-          interlocutorCountry: prod?.country || prof?.country || 'France',
-          interlocutorFlag: prod?.country_flag || '🌍',
-          isVerifiedProducer: !!prod?.verified,
-          unreadCount: unread || 0,
-        };
-      });
-
-      setConversations(items);
-
-      // Auto-select first conversation if none active and on desktop
-      if (!selectedConversationId && items.length > 0 && window.innerWidth >= 1024) {
-        setSelectedConversationId(items[0].conversation.id);
-      }
-    } catch (err) {
-      console.error('Error fetching conversations:', err);
-    } finally {
+    if (convErr || !convsData) {
       setLoading(false);
+      return;
     }
-  };
+
+    // Collect all interlocutor IDs
+    const interlocutorIds = convsData.map((c) =>
+      c.participant_1 === user.id ? c.participant_2 : c.participant_1
+    );
+
+    if (interlocutorIds.length === 0) {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
+
+    // Fetch profiles & producers for these interlocutors
+    const [{ data: profilesData }, { data: producersData }] = await Promise.all([
+      supabase.from('profiles').select('*').in('id', interlocutorIds),
+      supabase.from('producers').select('*').in('user_id', interlocutorIds),
+    ]);
+
+    const profileMap = new Map((profilesData as Profile[] || []).map((p) => [p.id, p]));
+    const producerMap = new Map((producersData as Producer[] || []).map((p) => [p.user_id!, p]));
+
+    const enriched: ConversationWithMeta[] = convsData.map((c) => {
+      const partnerId = c.participant_1 === user.id ? c.participant_2 : c.participant_1;
+      const partnerProfile = profileMap.get(partnerId);
+      const partnerProducer = producerMap.get(partnerId);
+
+      const isParticipant1 = c.participant_1 === user.id;
+      const unreadCount = isParticipant1 ? c.unread_count_1 : c.unread_count_2;
+
+      let name = 'Utilisateur';
+      let country = null;
+      let countryFlag = null;
+      let isVerified = false;
+      let producerSlug = null;
+      let avatarColor = '#15803d';
+
+      if (partnerProducer) {
+        name = partnerProducer.name;
+        country = partnerProducer.country;
+        countryFlag = partnerProducer.country_flag;
+        isVerified = partnerProducer.verified;
+        producerSlug = partnerProducer.slug;
+        avatarColor = partnerProducer.avatar_color || '#15803d';
+      } else if (partnerProfile) {
+        name = partnerProfile.full_name || partnerProfile.company || partnerProfile.email.split('@')[0];
+        country = partnerProfile.country;
+      }
+
+      const initials = name
+        .split(' ')
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+
+      return {
+        ...c,
+        unreadCount: unreadCount || 0,
+        interlocutor: {
+          id: partnerId,
+          name,
+          email: partnerProfile?.email,
+          avatar_initials: initials,
+          avatar_color: avatarColor,
+          avatar_url: partnerProfile?.avatar_url,
+          country,
+          country_flag: countryFlag,
+          is_verified: isVerified,
+          producer_slug: producerSlug,
+          role: partnerProfile?.role,
+        },
+      };
+    });
+
+    setConversations(enriched);
+    setLoading(false);
+
+    // If targetConvId was passed in searchParams, ensure activeConvId is set
+    if (targetConvId && enriched.some((c) => c.id === targetConvId)) {
+      setActiveConvId(targetConvId);
+    } else if (!activeConvId && enriched.length > 0) {
+      // Don't auto-select on mobile, but auto-select on desktop if activeConvId is null
+      if (window.innerWidth >= 1024) {
+        setActiveConvId(enriched[0].id);
+      }
+    }
+  }, [user, targetConvId, activeConvId]);
 
   useEffect(() => {
-    loadConversations();
+    fetchConversations();
+  }, [fetchConversations]);
 
+  // Subscribe to real-time updates on conversations list
+  useEffect(() => {
     if (!user) return;
 
-    // Realtime channel for conversation updates
     const channel = supabase
-      .channel(`user-conversations:${user.id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'conversations',
-      }, () => {
-        loadConversations();
-      })
+      .channel('user_conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `participant_1=eq.${user.id}`,
+        },
+        () => fetchConversations()
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `participant_2=eq.${user.id}`,
+        },
+        () => fetchConversations()
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, fetchConversations]);
 
   const selectConversation = (id: string) => {
-    setSelectedConversationId(id);
-    setSearchParams({ id });
+    setActiveConvId(id);
+    setSearchParams({ conversation: id }, { replace: true });
   };
 
-  const filteredConversations = conversations.filter(item => {
-    const q = searchQuery.toLowerCase();
-    return (
-      item.interlocutorName.toLowerCase().includes(q) ||
-      (item.conversation.last_message || '').toLowerCase().includes(q)
-    );
+  // Filter conversations by search term
+  const filtered = conversations.filter((c) => {
+    if (!search) return true;
+    const nameMatch = c.interlocutor?.name.toLowerCase().includes(search.toLowerCase());
+    const emailMatch = c.interlocutor?.email?.toLowerCase().includes(search.toLowerCase());
+    const msgMatch = c.last_message?.toLowerCase().includes(search.toLowerCase());
+    return nameMatch || emailMatch || msgMatch;
   });
 
-  const activeItem = conversations.find(c => c.conversation.id === selectedConversationId);
+  const activeConv = conversations.find((c) => c.id === activeConvId) || null;
 
-  const formatMessageDate = (dateStr?: string) => {
-    if (!dateStr) return '';
-    try {
-      const d = new Date(dateStr);
-      const now = new Date();
-      if (d.toDateString() === now.toDateString()) {
-        return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      }
-      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-    } catch {
-      return '';
-    }
-  };
-
-  if (!user) {
+  if (loading) {
     return (
-      <div className="bg-white rounded-2xl p-8 text-center border border-gray-100 shadow-sm">
-        <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <h2 className="text-lg font-bold text-gray-900 mb-2">Connexion requise</h2>
-        <p className="text-gray-500 text-sm mb-4">Veuillez vous connecter pour accéder à vos messages.</p>
-        <Link to="/connexion" className="btn-primary py-2 px-5">Se connecter</Link>
+      <div className="py-20 text-center text-gray-400">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-brand-500" />
+        Chargement de vos conversations...
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex h-[calc(100vh-140px)] min-h-[500px]">
-      {/* ── LEFT COLUMN: CONVERSATION LIST ── */}
-      <div
-        className={`w-full lg:w-80 xl:w-96 flex flex-col border-r border-gray-100 flex-shrink-0 ${
-          selectedConversationId ? 'hidden lg:flex' : 'flex'
-        }`}
-      >
-        {/* Header & Search */}
-        <div className="p-4 border-b border-gray-100 space-y-3 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-black text-gray-900 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-brand-600" />
-              Messagerie
-            </h1>
-            <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-              {conversations.length}
-            </span>
-          </div>
+    <div className="h-[calc(100vh-7rem)] flex flex-col">
+      <div className="mb-4 flex-shrink-0">
+        <h1 className="text-2xl font-black text-gray-900">Messagerie</h1>
+        <p className="text-xs text-gray-500">Échangez directement avec vos producteurs et partenaires</p>
+      </div>
 
-          <div className="relative">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un interlocuteur..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-gray-900 outline-none focus:border-brand-500 focus:bg-white transition-all"
-            />
+      {conversations.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-100 p-12 text-center max-w-lg mx-auto my-auto shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-brand-50 text-brand-500 flex items-center justify-center mx-auto mb-4">
+            <MessageSquare className="w-8 h-8" />
           </div>
+          <h3 className="text-lg font-black text-gray-900 mb-2">Aucune conversation</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Vous n'avez pas encore de message. Contactez un producteur depuis sa fiche produit ou sa boutique pour démarrer une discussion !
+          </p>
+          <Link
+            to="/catalogue"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 text-white font-bold text-sm rounded-xl hover:bg-brand-700 transition-colors shadow-xs"
+          >
+            <ShoppingBag className="w-4 h-4" /> Parcourir le catalogue
+          </Link>
         </div>
-
-        {/* Conversations Scroll List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-          {loading ? (
-            <div className="p-8 text-center text-gray-400 flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin text-brand-500" />
-              <span className="text-xs">Chargement...</span>
+      ) : (
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0 bg-white rounded-3xl border border-gray-100 p-3 shadow-xs">
+          {/* ── Left Column: Conversations List ── */}
+          <div
+            className={`lg:col-span-5 flex flex-col h-full border-r border-gray-100 pr-0 lg:pr-3 ${
+              activeConvId ? 'hidden lg:flex' : 'flex'
+            }`}
+          >
+            {/* Search Input */}
+            <div className="relative mb-3 flex-shrink-0">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un contact..."
+                className="w-full pl-10 pr-4 py-2 text-xs border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 bg-gray-50/50"
+              />
             </div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 my-auto">
-              <div className="w-12 h-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                💬
-              </div>
-              <p className="font-bold text-gray-700 text-sm mb-1">
-                {searchQuery ? 'Aucune conversation trouvée' : 'Aucune conversation'}
-              </p>
-              <p className="text-xs text-gray-500 max-w-xs mx-auto mb-4">
-                Contactez un producteur directement depuis la fiche d'un produit ou sa boutique !
-              </p>
-              <Link
-                to="/catalogue"
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold bg-brand-500 text-white rounded-xl hover:bg-brand-600 transition-colors"
-              >
-                Explorer le catalogue <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          ) : (
-            filteredConversations.map((item) => {
-              const isActive = item.conversation.id === selectedConversationId;
 
-              return (
-                <button
-                  key={item.conversation.id}
-                  onClick={() => selectConversation(item.conversation.id)}
-                  className={`w-full text-left p-4 flex items-start gap-3.5 transition-all hover:bg-gray-50 ${
-                    isActive ? 'bg-brand-50/60 border-l-4 border-brand-500 pl-3' : ''
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-xs relative"
-                    style={{ backgroundColor: item.interlocutorColor }}
-                  >
-                    {item.interlocutorAvatar ? (
-                      <img src={item.interlocutorAvatar} alt="" className="w-full h-full object-cover rounded-2xl" />
-                    ) : (
-                      item.interlocutorInitials
-                    )}
-                    {item.unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white font-extrabold text-[10px] flex items-center justify-center rounded-full border-2 border-white shadow-xs">
-                        {item.unreadCount}
-                      </span>
-                    )}
-                  </div>
+            {/* Conversation list */}
+            <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              {filtered.length === 0 ? (
+                <div className="text-center py-8 text-xs text-gray-400">
+                  Aucun contact correspondant à "{search}".
+                </div>
+              ) : (
+                filtered.map((c) => {
+                  const isActive = c.id === activeConvId;
+                  const name = c.interlocutor?.name || 'Contact';
+                  const initials = c.interlocutor?.avatar_initials || name.slice(0, 2).toUpperCase();
+                  const avatarColor = c.interlocutor?.avatar_color || '#15803d';
 
-                  {/* Details */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="font-bold text-gray-900 text-xs truncate">
-                          {item.interlocutorName}
-                        </span>
-                        {item.isVerifiedProducer && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-brand-600 flex-shrink-0" title="Vérifié" />
-                        )}
+                  const dateStr = c.last_message_at
+                    ? new Date(c.last_message_at).toLocaleDateString('fr-FR', {
+                        day: 'numeric',
+                        month: 'short',
+                      })
+                    : '';
+
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => selectConversation(c.id)}
+                      className={`w-full text-left p-3 rounded-2xl transition-all flex items-start gap-3 relative ${
+                        isActive
+                          ? 'bg-brand-50 border border-brand-200/60 shadow-2xs'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold text-sm shadow-xs flex-shrink-0"
+                        style={{ backgroundColor: avatarColor }}
+                      >
+                        {initials}
                       </div>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">
-                        {formatMessageDate(item.conversation.last_message_at)}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs truncate ${item.unreadCount > 0 ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
-                        {item.conversation.last_message || 'Nouvelle conversation'}
-                      </p>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">
-                        {item.interlocutorFlag}
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <h4 className="font-bold text-gray-900 text-sm truncate">{name}</h4>
+                          <span className="text-[10px] text-gray-400 font-medium flex-shrink-0">{dateStr}</span>
+                        </div>
 
-      {/* ── RIGHT COLUMN: ACTIVE CHAT ── */}
-      <div
-        className={`flex-1 flex flex-col bg-gray-50 h-full ${
-          selectedConversationId ? 'flex' : 'hidden lg:flex'
-        }`}
-      >
-        {activeItem ? (
-          <ChatView
-            conversation={activeItem.conversation}
-            currentUserId={user.id}
-            onBack={() => setSelectedConversationId(null)}
-            onMessageSent={loadConversations}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center text-gray-400 bg-white">
-            <div className="w-16 h-16 bg-brand-50 text-brand-600 rounded-3xl flex items-center justify-center mb-4 shadow-xs">
-              <Sparkles className="w-8 h-8" />
+                        <p className={`text-xs truncate ${c.unreadCount > 0 ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
+                          {c.last_message || 'Nouvelle conversation'}
+                        </p>
+                      </div>
+
+                      {c.unreadCount > 0 && (
+                        <span className="bg-brand-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs flex-shrink-0">
+                          {c.unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
             </div>
-            <h2 className="text-base font-bold text-gray-900 mb-1">
-              Vos échanges EthiMarket
-            </h2>
-            <p className="text-xs text-gray-500 max-w-sm mb-6 leading-relaxed">
-              Sélectionnez une conversation dans la liste pour discuter des produits, négocier les volumes ou demander un devis sur-mesure.
-            </p>
           </div>
-        )}
-      </div>
+
+          {/* ── Right Column: Chat View ── */}
+          <div
+            className={`lg:col-span-7 flex flex-col h-full ${
+              !activeConvId ? 'hidden lg:flex' : 'flex'
+            }`}
+          >
+            {activeConv && user ? (
+              <ChatView
+                conversation={activeConv}
+                currentUserId={user.id}
+                interlocutor={activeConv.interlocutor}
+                onBack={() => setActiveConvId(null)}
+                onMessageSent={() => fetchConversations()}
+              />
+            ) : (
+              <div className="hidden lg:flex flex-col items-center justify-center h-full text-center p-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <MessageSquare className="w-12 h-12 text-gray-300 mb-3" />
+                <h3 className="font-bold text-gray-700 text-base mb-1">Sélectionnez une conversation</h3>
+                <p className="text-xs text-gray-400 max-w-xs">
+                  Choisissez un contact dans la liste de gauche pour afficher l'historique des échanges.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

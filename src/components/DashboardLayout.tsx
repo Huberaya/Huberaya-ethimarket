@@ -46,31 +46,38 @@ function VerificationBadge({ producerId }: { producerId: string }) {
 function UnreadMessagesBadge({ userId }: { userId: string }) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  const fetchUnread = async () => {
-    if (!userId) return;
-    const { data } = await supabase
-      .from('conversations')
-      .select('participant_1, unread_count_1, unread_count_2')
-      .or(`participant_1.eq.${userId},participant_2.eq.${userId}`);
-
-    if (data) {
-      let total = 0;
-      for (const conv of data) {
-        if (conv.participant_1 === userId) total += conv.unread_count_1 || 0;
-        else total += conv.unread_count_2 || 0;
-      }
-      setUnreadCount(total);
-    }
-  };
-
   useEffect(() => {
+    if (!userId) return;
+
+    const fetchUnread = async () => {
+      const { data } = await supabase
+        .from('conversations')
+        .select('participant_1, participant_2, unread_count_1, unread_count_2')
+        .or(`participant_1.eq.${userId},participant_2.eq.${userId}`);
+
+      if (!data) return;
+      let total = 0;
+      data.forEach((c) => {
+        if (c.participant_1 === userId) total += c.unread_count_1 || 0;
+        if (c.participant_2 === userId) total += c.unread_count_2 || 0;
+      });
+      setUnreadCount(total);
+    };
+
     fetchUnread();
 
     const channel = supabase
-      .channel(`unread-nav:${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
-        fetchUnread();
-      })
+      .channel(`unread_badge_${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations', filter: `participant_1=eq.${userId}` },
+        () => fetchUnread()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations', filter: `participant_2=eq.${userId}` },
+        () => fetchUnread()
+      )
       .subscribe();
 
     return () => {
@@ -81,7 +88,7 @@ function UnreadMessagesBadge({ userId }: { userId: string }) {
   if (unreadCount <= 0) return null;
 
   return (
-    <span className="bg-brand-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full animate-pulse">
+    <span className="bg-brand-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
       {unreadCount}
     </span>
   );
