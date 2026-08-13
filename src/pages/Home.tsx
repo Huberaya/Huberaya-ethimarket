@@ -8,6 +8,7 @@ import {
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import ProductCard from '../components/ProductCard';
+import SEOHead from '../components/SEOHead';
 import { supabase, type Product, type Category, type Producer, type Article } from '../lib/supabase';
 
 /* ─── Constants ────────────────────────────────────────── */
@@ -140,6 +141,23 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
+      <SEOHead
+        title="EthiMarket - Marketplace B2B Équitable & Traçable Afrique-Europe"
+        description="Achetez en direct auprès de producteurs certifiés dans 45 pays. Cacao, café, épices, fruits secs, huiles avec traçabilité blockchain et score éthique."
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@type': 'Organization',
+          name: 'EthiMarket',
+          url: 'https://ethimarket.com',
+          logo: 'https://ethimarket.com/logo.png',
+          description: 'Marketplace B2B équitable et traçable connectant producteurs africains et acheteurs mondiaux.',
+          sameAs: [
+            'https://facebook.com/ethimarket',
+            'https://linkedin.com/company/ethimarket',
+            'https://twitter.com/ethimarket',
+          ],
+        }}
+      />
       <Header />
 
       {/* ═══ 1. HERO ═══ */}

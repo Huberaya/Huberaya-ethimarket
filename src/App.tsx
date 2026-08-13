@@ -13,6 +13,8 @@ import NotreMission from './pages/NotreMission';
 import Producers from './pages/Producers';
 import ComingSoon from './pages/ComingSoon';
 import Legal from './pages/Legal';
+import NotFound from './pages/NotFound';
+import BackToTop from './components/BackToTop';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
 import Dashboard from './pages/Dashboard';
@@ -41,6 +43,7 @@ import ScoreEthiMarket from './pages/ScoreEthiMarket';
 export default function App() {
   return (
     <BrowserRouter>
+      <BackToTop />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalogue" element={<Catalogue />} />
@@ -96,6 +99,9 @@ export default function App() {
           <Route path="configuration" element={<AdminReports />} />
           <Route path="reports" element={<AdminReports />} />
         </Route>
+
+        {/* 404 Catch-All */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );

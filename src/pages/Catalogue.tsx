@@ -7,6 +7,8 @@ import {
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import ProductCard from '../components/ProductCard';
+import SEOHead from '../components/SEOHead';
+import { ProductCardSkeleton } from '../components/Skeleton';
 import { supabase, type Product, type Category } from '../lib/supabase';
 import { COUNTRIES } from '../lib/countries';
 
@@ -309,6 +311,10 @@ export default function Catalogue() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEOHead
+        title="Catalogue Produits Bio & Équitables | EthiMarket"
+        description="Parcourez plus de 50 000 produits bio certifiés en direct des coopératives agricoles : cacao, café, épices, fruits, huiles. Prix directs sans intermédiaire."
+      />
       <Header />
 
       {/* Page header */}
@@ -455,7 +461,7 @@ export default function Catalogue() {
             {/* Product grid */}
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {[...Array(9)].map((_, i) => <Skeleton key={i} />)}
+                {[...Array(9)].map((_, i) => <ProductCardSkeleton key={i} />)}
               </div>
             ) : products.length > 0 ? (
               <div className={gridView

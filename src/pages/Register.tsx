@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Leaf, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import SEOHead from '../components/SEOHead';
 import { supabase } from '../lib/supabase';
 import { COUNTRIES } from '../lib/countries';
 import { sanitizeProducerPayload } from '../lib/dbHelpers';
@@ -137,6 +138,10 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      <SEOHead
+        title="Inscription - Rejoindre EthiMarket | EthiMarket"
+        description="Créez votre compte producteur ou acheteur sur EthiMarket. Accédez au marché mondial des produits bio et équitables."
+      />
       {/* Side image */}
       <div className="hidden xl:block xl:w-[38%] relative">
         <img

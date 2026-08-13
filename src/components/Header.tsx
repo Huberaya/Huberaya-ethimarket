@@ -55,19 +55,26 @@ export default function Header() {
 
           {/* Nav desktop */}
           <nav className="hidden lg:flex items-center gap-1">
-            {NAV_LINKS.map(({ label, href }) => (
-              <Link
-                key={label}
-                to={href}
-                className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all ${
-                  transparent
-                    ? 'text-white/90 hover:text-white hover:bg-white/10'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {label}
-              </Link>
-            ))}
+            {NAV_LINKS.map(({ label, href }) => {
+              const isActive = location.pathname === href || (href !== '/' && location.pathname.startsWith(href));
+              return (
+                <Link
+                  key={label}
+                  to={href}
+                  className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all ${
+                    transparent
+                      ? isActive
+                        ? 'text-white font-bold bg-white/20'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                      : isActive
+                      ? 'text-brand-600 font-bold bg-brand-50/80 border-b-2 border-brand-500'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* Actions desktop */}
@@ -128,16 +135,23 @@ export default function Header() {
 
       {/* Mobile menu */}
       <div className={`lg:hidden overflow-hidden transition-all duration-300 ${mobileOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-        <div className="bg-white border-t border-gray-100 px-4 py-4 space-y-1 shadow-lg">
-          {NAV_LINKS.map(({ label, href }) => (
-            <Link
-              key={label}
-              to={href}
-              className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"
-            >
-              {label}
-            </Link>
-          ))}
+        <div className="bg-white border-t border-gray-100 px-4 py-4 space-y-1.5 shadow-lg">
+          {NAV_LINKS.map(({ label, href }) => {
+            const isActive = location.pathname === href || (href !== '/' && location.pathname.startsWith(href));
+            return (
+              <Link
+                key={label}
+                to={href}
+                className={`flex items-center gap-2 px-3 py-3 text-sm rounded-xl transition-colors min-h-[44px] ${
+                  isActive
+                    ? 'font-bold text-brand-700 bg-brand-50 border-l-4 border-brand-500'
+                    : 'font-medium text-gray-700 hover:text-brand-600 hover:bg-brand-50/50'
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
           <div className="flex flex-col gap-2 pt-3 border-t border-gray-100 mt-2">
             {user ? (
               <>

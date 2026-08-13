@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import SEOHead from '../components/SEOHead';
 
 const LEGAL_CONTENT: Record<string, { title: string; sections: { heading: string; body: string }[] }> = {
   '/conditions-utilisation': {
@@ -53,6 +54,7 @@ export default function Legal() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      <SEOHead title={`${content.title} | EthiMarket`} description={content.sections[0]?.body || 'Mentions légales EthiMarket.'} />
       <Header />
       <main className="flex-1 pt-24 pb-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">

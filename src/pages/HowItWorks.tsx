@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import SEOHead from '../components/SEOHead';
 
 const BUYER_STEPS = [
   { icon: UserPlus,    title: 'Inscription gratuite',       desc: "Créez votre compte acheteur en 2 minutes. Accès immédiat au catalogue complet." },
@@ -62,6 +63,10 @@ function FaqAccordion() {
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      <SEOHead
+        title="Comment ça marche ? | EthiMarket B2B"
+        description="Découvrez comment EthiMarket connecte directement les acheteurs bio et les producteurs certifiés : inscription, commande sécurisée, paiement escrow et livraison."
+      />
       <Header />
 
       {/* HERO */}

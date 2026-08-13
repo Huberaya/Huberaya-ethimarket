@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Leaf, ArrowRight, Globe, Users, Package } from 'lucide-react';
+import SEOHead from '../components/SEOHead';
 import { supabase } from '../lib/supabase';
 
 const HERO_TESTIMONIALS = [
@@ -29,6 +30,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
+      <SEOHead
+        title="Connexion | EthiMarket"
+        description="Connectez-vous à votre espace EthiMarket pour gérer vos commandes B2B, vos produits bio certifiés et vos messages direct avec les producteurs."
+      />
       {/* ── Left panel (green) ── */}
       <div className="hidden lg:flex lg:w-[52%] relative overflow-hidden flex-col">
         {/* Background */}

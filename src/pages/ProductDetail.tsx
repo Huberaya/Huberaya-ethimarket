@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import ScoreBadge from '../components/ScoreBadge';
+import SEOHead from '../components/SEOHead';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -195,6 +196,34 @@ export default function ProductDetail() {
 
   return (
     <div className="min-h-screen bg-white pb-20 lg:pb-0">
+      <SEOHead
+        title={`${product.name} - En direct de ${product.country} | EthiMarket`}
+        description={product.description.slice(0, 160)}
+        image={gallery ? gallery[0] : undefined}
+        type="product"
+        jsonLd={{
+          '@context': 'https://schema.org/',
+          '@type': 'Product',
+          name: product.name,
+          image: gallery || [],
+          description: product.description,
+          offers: {
+            '@type': 'Offer',
+            priceCurrency: 'EUR',
+            price: product.price,
+            availability: 'https://schema.org/InStock',
+            seller: {
+              '@type': 'Organization',
+              name: producer?.name || 'Coopérative EthiMarket',
+            },
+          },
+          aggregateRating: product.review_count > 0 ? {
+            '@type': 'AggregateRating',
+            ratingValue: product.rating,
+            reviewCount: product.review_count,
+          } : undefined,
+        }}
+      />
       <Header />
 
       {/* Breadcrumb */}
