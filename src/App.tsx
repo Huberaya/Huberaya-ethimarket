@@ -31,6 +31,7 @@ import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducers from './pages/admin/Producers';
 import AdminVerificationsPage from './pages/admin/Verifications';
+import AdminVerificationDetail from './pages/admin/AdminVerificationDetail';
 import AdminCertifications from './pages/admin/Certifications';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -87,6 +88,7 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="producteurs" element={<AdminProducers />} />
           <Route path="verifications" element={<AdminVerificationsPage />} />
+          <Route path="verification/:producerId" element={<AdminVerificationDetail />} />
           <Route path="certifications" element={<AdminCertifications />} />
           <Route path="produits" element={<AdminProducts />} />
           <Route path="products" element={<AdminProducts />} />

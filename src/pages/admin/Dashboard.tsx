@@ -18,9 +18,11 @@ export default function AdminDashboard() {
   const [topProducts, setTopProducts] = useState<{ name: string; emoji: string; orders: number; revenue: number }[]>([]);
 
   const load = useCallback(async () => {
-    const [producersRes, pendingRes, profilesRes, ordersRes, avgScoreRes] = await Promise.all([
+    const [producersRes, pendingRes, approvedRes, rejectedRes, profilesRes, ordersRes, avgScoreRes] = await Promise.all([
       supabase.from('producers').select('*', { count: 'exact', head: true }),
-      supabase.from('producer_verifications').select('*', { count: 'exact', head: true }).neq('onboarding_complete', true),
+      supabase.from('producers').select('*', { count: 'exact', head: true }).eq('verification_status', 'submitted'),
+      supabase.from('producers').select('*', { count: 'exact', head: true }).eq('verification_status', 'approved'),
+      supabase.from('producers').select('*', { count: 'exact', head: true }).eq('verification_status', 'rejected'),
       supabase.from('profiles').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*').gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
       supabase.from('producers').select('ethimarket_score'),
@@ -31,12 +33,15 @@ export default function AdminDashboard() {
     const scores = (avgScoreRes.data ?? []).map((p: { ethimarket_score: number }) => p.ethimarket_score);
     const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
+    const totalAudited = (approvedRes.count ?? 0) + (rejectedRes.count ?? 0);
+    const approvalRate = totalAudited > 0 ? Math.round(((approvedRes.count ?? 0) / totalAudited) * 100) : 100;
+
     setKpis([
       { label: 'Producteurs', value: String(producersRes.count ?? 0), icon: ShieldCheck, color: 'text-brand-600', bg: 'bg-brand-50' },
-      { label: 'En attente vérif.', value: String(pendingRes.count ?? 0), icon: Award, color: 'text-amber-600', bg: 'bg-amber-50' },
+      { label: 'Dossiers en attente', value: String(pendingRes.count ?? 0), icon: Award, color: 'text-amber-600', bg: 'bg-amber-50' },
+      { label: 'Taux d\'approbation', value: `${approvalRate}%`, icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
       { label: 'Acheteurs', value: String(profilesRes.count ?? 0), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-      { label: 'Commandes du mois', value: String(monthOrders.length), icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50' },
-      { label: 'CA du mois', value: `${monthRevenue.toLocaleString('fr-FR')} €`, icon: Wallet, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+      { label: 'CA du mois', value: `${monthRevenue.toLocaleString('fr-FR')} €`, icon: Wallet, color: 'text-purple-600', bg: 'bg-purple-50' },
       { label: 'Score moyen', value: `${avgScore}/100`, icon: Award, color: 'text-gray-700', bg: 'bg-gray-100' },
     ]);
 

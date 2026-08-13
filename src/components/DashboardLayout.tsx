@@ -21,26 +21,33 @@ const NAV = [
 ] as const;
 
 function VerificationBadge({ producerId }: { producerId: string }) {
-  const [status, setStatus] = useState<string>('pending');
+  const [vStatus, setVStatus] = useState<string>('draft');
+
   useEffect(() => {
-    supabase.from('producer_verifications')
-      .select('section_1_status, section_2_status, section_3_status, section_4_status, section_5_status')
-      .eq('producer_id', producerId).maybeSingle()
+    supabase.from('producers')
+      .select('verification_status')
+      .eq('id', producerId)
+      .maybeSingle()
       .then(({ data }) => {
-        if (!data) return;
-        const statuses = [data.section_1_status, data.section_2_status, data.section_3_status, data.section_4_status, data.section_5_status];
-        if (statuses.every((s: string) => s === 'approved')) setStatus('approved');
-        else if (statuses.some((s: string) => s === 'submitted')) setStatus('submitted');
-        else setStatus('pending');
+        if (data?.verification_status) {
+          setVStatus(data.verification_status);
+        }
       });
   }, [producerId]);
 
-  const colors: Record<string, string> = {
-    pending: 'bg-gray-100 text-gray-500',
-    submitted: 'bg-amber-100 text-amber-600',
-    approved: 'bg-brand-100 text-brand-700',
-  };
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${colors[status]}`}>{status === 'approved' ? '✓' : '!'}</span>;
+  if (vStatus === 'approved') {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">✓ Validé</span>;
+  }
+  if (vStatus === 'submitted') {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Soumis</span>;
+  }
+  if (vStatus === 'rejected') {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Rejeté</span>;
+  }
+  if (vStatus === 'under_review') {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Examen</span>;
+  }
+  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">Brouillon</span>;
 }
 
 function UnreadMessagesBadge({ userId }: { userId: string }) {

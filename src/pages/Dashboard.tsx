@@ -38,6 +38,54 @@ export default function Dashboard() {
         <p className="text-gray-500 text-sm mt-0.5 capitalize">{today}</p>
       </div>
 
+      {/* Verification Warning Banner for unapproved producers */}
+      {producer && producer.verification_status !== 'approved' && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-6 mb-6 shadow-sm">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-amber-200 text-amber-900 font-black text-xs rounded-full uppercase tracking-wider">
+                  ⚠️ Boutique non publiée
+                </span>
+                <span className="text-xs font-bold text-amber-800">
+                  Accréditation Bureau Veritas requise
+                </span>
+              </div>
+              <h2 className="text-lg font-black text-gray-900">
+                Votre boutique n'est pas encore visible publiquement sur le catalogue.
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-semibold text-gray-700 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={producer.profile_completion && producer.profile_completion >= 80 ? 'text-brand-600' : 'text-gray-400'}>
+                    {producer.profile_completion && producer.profile_completion >= 80 ? '✅' : '1. ⬜'}
+                  </span>
+                  <span>Compléter votre profil</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={producer.identity_recto_url ? 'text-brand-600' : 'text-gray-400'}>
+                    {producer.identity_recto_url ? '✅' : '2. ⬜'}
+                  </span>
+                  <span>Uploader vos documents</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={producer.verification_status === 'submitted' ? 'text-brand-600' : 'text-gray-400'}>
+                    {producer.verification_status === 'submitted' ? '✅' : '3. ⬜'}
+                  </span>
+                  <span>Soumettre pour validation</span>
+                </div>
+              </div>
+            </div>
+
+            <Link
+              to="/dashboard/verification"
+              className="btn-primary px-5 py-3 text-xs font-bold whitespace-nowrap flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow"
+            >
+              Voir mon statut de vérification →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Welcome banner for new producers */}
       {isNewProducer && !loading && (
         <div className="bg-gradient-to-r from-brand-500 to-teal-400 rounded-2xl p-6 mb-6 text-white">

@@ -121,9 +121,16 @@ export default function Catalogue() {
     const from = (page - 1) * PER_PAGE;
     query = query.range(from, from + PER_PAGE - 1);
 
-    const { data, count } = await query;
-    if (data)          setProducts(data);
-    if (count !== null) setTotal(count);
+    const { data } = await query;
+    if (data) {
+      // Filter products from producers who are approved by Bureau Veritas / Admin
+      const approvedOnly = data.filter(p => !p.producers || p.producers.verification_status === 'approved');
+      setProducts(approvedOnly);
+      setTotal(approvedOnly.length);
+    } else {
+      setProducts([]);
+      setTotal(0);
+    }
     setLoading(false);
   }, [search, selectedCategory, selectedCountry, selectedCerts, minRating, priceMin, priceMax, maxMoq, minScore, sort, page, categories]);
 

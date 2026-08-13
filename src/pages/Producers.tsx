@@ -17,7 +17,11 @@ export default function Producers() {
   useEffect(() => {
     supabase.from('producers').select('*').order('rating', { ascending: false })
       .then(({ data }) => {
-        if (data) setProducers(data);
+        if (data) {
+          // Filter producers verified/approved by Bureau Veritas or fallback
+          const approved = data.filter(p => !p.verification_status || p.verification_status === 'approved');
+          setProducers(approved);
+        }
         setLoading(false);
       });
   }, []);

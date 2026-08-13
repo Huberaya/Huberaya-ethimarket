@@ -136,6 +136,16 @@ export type Producer = {
   last_updated_at: string | null;
   shipping_paid_by: string | null;
   logistics_partners: string | null;
+  verification_status?: 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'suspended' | 'banned' | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  rejection_reason?: string | null;
+  rejection_details?: Record<string, unknown>[] | Record<string, unknown> | null;
+  verification_notes?: string | null;
+  last_audit_date?: string | null;
+  next_audit_date?: string | null;
+  audit_count?: number | null;
 };
 
 export type ScoreCategory = {
@@ -372,12 +382,30 @@ export type Dispute = {
 
 export type AdminNotification = {
   id: string;
-  type: 'new_producer' | 'dispute' | 'expiring_cert' | 'fraud' | 'new_order';
+  type: string;
   title: string;
   message: string;
-  link: string | null;
-  priority: 'low' | 'normal' | 'urgent';
-  read: boolean;
+  producer_id?: string | null;
+  user_id?: string | null;
+  data?: Record<string, unknown> | null;
+  link?: string | null;
+  priority?: 'low' | 'normal' | 'urgent';
+  is_read?: boolean;
+  read?: boolean;
+  read_at?: string | null;
+  created_at: string;
+};
+
+export type VerificationHistory = {
+  id: string;
+  producer_id: string;
+  action: string;
+  old_status?: string | null;
+  new_status?: string | null;
+  admin_id?: string | null;
+  reason?: string | null;
+  details?: Record<string, unknown> | null;
+  documents_reviewed?: string[] | null;
   created_at: string;
 };
 
