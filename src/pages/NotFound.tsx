@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Home, ShoppingBag, ArrowLeft, Search } from 'lucide-react';
+import { Home, ShoppingBag } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SEOHead from '../components/SEOHead';

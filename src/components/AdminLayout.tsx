@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ShieldCheck, Award, Package, ShoppingCart,
-  AlertTriangle, Wallet, Users, FileBarChart, Bell, Menu, X,
+  AlertTriangle, Wallet, Users, Bell, Menu, X,
   LogOut, ChevronDown, Leaf, Settings
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';

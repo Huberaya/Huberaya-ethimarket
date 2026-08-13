@@ -1,12 +1,12 @@
 /**
- * EthiMarket — Scientifically Backed Environmental & Economic Reference Data
+ * EthiMarket — Scientific Environmental & Economic Reference Data
  * 
  * Sources & Methodologies:
- * - Carbon Footprint: WRI/WBCSD GHG Protocol (Scopes 1, 2, 3), ADEME Base Carbone®, Agribalyse 3.1
- * - Water Footprint: Water Footprint Network (Mekonnen & Hoekstra, UNESCO-IHE)
- * - Biodiversity: IBAT (Integrated Biodiversity Assessment Tool), FAO Agroforestry Guidelines
- * - Economic & Social: Fairtrade International Impact Assessment, UN Sustainable Development Goals (SDGs)
- * - Customs & Trade: EU Combined Nomenclature (TARIC), Cotonou / Everything But Arms (EBA) Agreements
+ * - Carbon Footprint: ADEME Base Carbone® 2024, WRI/WBCSD GHG Protocol (Scopes 1-3)
+ * - Water Footprint: Water Footprint Network (Hoekstra et al., 2011 / UNESCO-IHE)
+ * - Biodiversity: IBAT (Integrated Biodiversity Assessment Tool) & FAO Agroforestry
+ * - Economic & Social: Fairtrade Impact Assessment, Anker Living Wage Benchmark, UN SDGs
+ * - Trade & Customs: EU TARIC Combined Nomenclature & ACP / EBA Duty-Free Agreements
  */
 
 export interface ProductFactor {
@@ -19,160 +19,198 @@ export interface ProductFactor {
   hsCode: string;                   // EU Customs HS Code
 }
 
+export const PRODUCTION_FACTORS: Record<string, { bio: number; conv: number; unit: string }> = {
+  coffee: { bio: 1.2, conv: 4.5, unit: 'kg CO2e/kg' },
+  cocoa: { bio: 2.8, conv: 8.0, unit: 'kg CO2e/kg' },
+  tea: { bio: 0.9, conv: 3.2, unit: 'kg CO2e/kg' },
+  spices: { bio: 0.5, conv: 2.0, unit: 'kg CO2e/kg' },
+  vanilla: { bio: 1.8, conv: 5.5, unit: 'kg CO2e/kg' },
+  oils: { bio: 1.5, conv: 4.0, unit: 'kg CO2e/kg' },
+  dried_fruits: { bio: 0.8, conv: 2.5, unit: 'kg CO2e/kg' },
+  honey: { bio: 0.3, conv: 1.2, unit: 'kg CO2e/kg' },
+  cereals: { bio: 0.6, conv: 1.8, unit: 'kg CO2e/kg' },
+  cosmetics: { bio: 2.0, conv: 6.0, unit: 'kg CO2e/kg' },
+};
+
+export const WATER_FACTORS: Record<string, { bio: number; conv: number }> = {
+  coffee: { bio: 5400, conv: 18900 },
+  cocoa: { bio: 8200, conv: 27000 },
+  tea: { bio: 2700, conv: 8860 },
+  spices: { bio: 1500, conv: 5000 },
+  vanilla: { bio: 7500, conv: 25000 },
+  oils: { bio: 3200, conv: 14400 },
+  dried_fruits: { bio: 4000, conv: 9063 },
+  honey: { bio: 800, conv: 3000 },
+  cereals: { bio: 1200, conv: 3500 },
+  cosmetics: { bio: 2000, conv: 8000 },
+};
+
 export const PRODUCT_FACTORS: Record<string, ProductFactor> = {
   coffee: {
     name: 'Café',
     categoryKeys: ['café', 'coffee', 'cafe'],
-    bioEmissionFactor: 1.2,
-    convEmissionFactor: 4.5,
-    bioWaterFootprint: 5400,
-    convWaterFootprint: 18900,
+    bioEmissionFactor: PRODUCTION_FACTORS.coffee.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.coffee.conv,
+    bioWaterFootprint: WATER_FACTORS.coffee.bio,
+    convWaterFootprint: WATER_FACTORS.coffee.conv,
     hsCode: '0901',
   },
   cocoa: {
     name: 'Cacao',
     categoryKeys: ['cacao', 'cocoa', 'chocolat'],
-    bioEmissionFactor: 2.8,
-    convEmissionFactor: 8.0,
-    bioWaterFootprint: 8200,
-    convWaterFootprint: 27000,
+    bioEmissionFactor: PRODUCTION_FACTORS.cocoa.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.cocoa.conv,
+    bioWaterFootprint: WATER_FACTORS.cocoa.bio,
+    convWaterFootprint: WATER_FACTORS.cocoa.conv,
     hsCode: '1801',
   },
   tea: {
     name: 'Thé',
     categoryKeys: ['thé', 'tea', 'infusion'],
-    bioEmissionFactor: 0.9,
-    convEmissionFactor: 3.2,
-    bioWaterFootprint: 2700,
-    convWaterFootprint: 8860,
+    bioEmissionFactor: PRODUCTION_FACTORS.tea.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.tea.conv,
+    bioWaterFootprint: WATER_FACTORS.tea.bio,
+    convWaterFootprint: WATER_FACTORS.tea.conv,
     hsCode: '0902',
   },
   spices: {
     name: 'Épices',
     categoryKeys: ['épices', 'spices', 'poivre', 'gingembre', 'curcuma', 'cannelle'],
-    bioEmissionFactor: 0.5,
-    convEmissionFactor: 2.0,
-    bioWaterFootprint: 1500,
-    convWaterFootprint: 5000,
+    bioEmissionFactor: PRODUCTION_FACTORS.spices.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.spices.conv,
+    bioWaterFootprint: WATER_FACTORS.spices.bio,
+    convWaterFootprint: WATER_FACTORS.spices.conv,
     hsCode: '0910',
   },
   vanilla: {
     name: 'Vanille',
     categoryKeys: ['vanille', 'vanilla'],
-    bioEmissionFactor: 1.8,
-    convEmissionFactor: 5.5,
-    bioWaterFootprint: 7500,
-    convWaterFootprint: 25000,
+    bioEmissionFactor: PRODUCTION_FACTORS.vanilla.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.vanilla.conv,
+    bioWaterFootprint: WATER_FACTORS.vanilla.bio,
+    convWaterFootprint: WATER_FACTORS.vanilla.conv,
     hsCode: '0905',
   },
   oils: {
     name: 'Huiles',
     categoryKeys: ['huile', 'oil', 'argan', 'karité', 'sesame'],
-    bioEmissionFactor: 1.5,
-    convEmissionFactor: 4.0,
-    bioWaterFootprint: 3200,
-    convWaterFootprint: 14400,
+    bioEmissionFactor: PRODUCTION_FACTORS.oils.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.oils.conv,
+    bioWaterFootprint: WATER_FACTORS.oils.bio,
+    convWaterFootprint: WATER_FACTORS.oils.conv,
     hsCode: '1515',
   },
   dried_fruits: {
     name: 'Fruits secs & Noix',
     categoryKeys: ['fruits secs', 'noix', 'anacarde', 'mangue', 'dates', 'raisins', 'dried fruit'],
-    bioEmissionFactor: 0.8,
-    convEmissionFactor: 2.5,
-    bioWaterFootprint: 4000,
-    convWaterFootprint: 9063,
+    bioEmissionFactor: PRODUCTION_FACTORS.dried_fruits.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.dried_fruits.conv,
+    bioWaterFootprint: WATER_FACTORS.dried_fruits.bio,
+    convWaterFootprint: WATER_FACTORS.dried_fruits.conv,
     hsCode: '0813',
   },
   honey: {
     name: 'Miel',
     categoryKeys: ['miel', 'honey'],
-    bioEmissionFactor: 0.3,
-    convEmissionFactor: 1.2,
-    bioWaterFootprint: 800,
-    convWaterFootprint: 3000,
+    bioEmissionFactor: PRODUCTION_FACTORS.honey.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.honey.conv,
+    bioWaterFootprint: WATER_FACTORS.honey.bio,
+    convWaterFootprint: WATER_FACTORS.honey.conv,
     hsCode: '0409',
+  },
+  cereals: {
+    name: 'Céréales & Grains',
+    categoryKeys: ['céréales', 'grains', 'riz', 'fonio', 'quinoa', 'cereals'],
+    bioEmissionFactor: PRODUCTION_FACTORS.cereals.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.cereals.conv,
+    bioWaterFootprint: WATER_FACTORS.cereals.bio,
+    convWaterFootprint: WATER_FACTORS.cereals.conv,
+    hsCode: '1008',
+  },
+  cosmetics: {
+    name: 'Cosmétiques Naturels',
+    categoryKeys: ['cosmétique', 'savon', 'baume', 'creme', 'cosmetics'],
+    bioEmissionFactor: PRODUCTION_FACTORS.cosmetics.bio,
+    convEmissionFactor: PRODUCTION_FACTORS.cosmetics.conv,
+    bioWaterFootprint: WATER_FACTORS.cosmetics.bio,
+    convWaterFootprint: WATER_FACTORS.cosmetics.conv,
+    hsCode: '3304',
   },
 };
 
-/**
-  * ADEME Base Carbone® Freight Transport Emission Factors (kg CO2e / t.km)
-  */
 export const TRANSPORT_EMISSION_FACTORS: Record<string, number> = {
-  air: 0.602,    // Transport aérien long-courrier cargo
-  sea: 0.016,    // Navire porte-conteneurs transocéanique
-  road: 0.062,   // Poids lourd articulé >33t
-  rail: 0.023,   // Fret ferroviaire électriqué
+  air: 0.602,      // kg CO2e par tonne.km (aérien cargo)
+  dhl: 0.602,      // express aérien
+  ups: 0.602,      // express aérien
+  sea: 0.016,      // maritime porte-conteneurs
+  maritime: 0.016,  // maritime
+  road: 0.062,     // routier
+  rail: 0.023,     // ferroviaire
 };
 
-/**
- * Packaging Emission Factors (kg CO2e / kg of packaging material)
- */
 export const PACKAGING_EMISSION_FACTORS: Record<string, number> = {
-  cardboard: 0.3, // Carton recyclé FSC
-  jute: 0.1,      // Toile de jute 100% biodégradable
-  plastic: 2.0,   // Plastique Vierge PE/PP
-  glass: 0.8,     // Verre moulé léger
+  'Jute biodégradable': 0.1,
+  'Carton recyclé': 0.3,
+  'Sac papier': 0.25,
+  'Plastique recyclable': 1.5,
+  'Verre': 0.8,
+  'Autre': 0.5,
+  // Alias keys
+  cardboard: 0.3,
+  jute: 0.1,
+  plastic: 1.5,
+  glass: 0.8,
 };
 
-/**
- * Biodiversity Preservation Boost Factors (IBAT methodology vs. conventional intensive monoculture)
- */
-export const CULTIVATION_BIODIVERSITY_BOOST: Record<string, number> = {
-  organic: 0.30,          // +30% d'espèces préservées (Bio contrôlé)
-  agroforestry: 0.50,     // +50% d'espèces préservées (Agroforesterie sous ombrage)
-  permaculture: 0.45,      // +45% d'espèces préservées (Permaculture régénérative)
-  organic_shade: 0.60,    // +60% d'espèces préservées (Bio + couvert arboré dense)
+export const BIODIVERSITY_SPECIES_DENSITY: Record<string, number> = {
+  'Afrique': 150,
+  'Amérique latine': 200,
+  'Asie': 180,
+  'Europe': 80,
+  'Moyen-Orient': 60,
 };
 
-/**
- * Species density per hectare by geographic region (IBAT Species Richness Index)
- */
-export const REGION_SPECIES_DENSITY: Record<string, number> = {
-  tropical_africa: 150,   // Afrique tropicale (ex: Côte d'Ivoire, Cameroun, Ghana)
-  latin_america: 200,     // Amérique latine (Amazonie, Amérique Centrale)
-  southeast_asia: 180,    // Asie du Sud-Est (Indonésie, Vietnam)
-  mediterranean: 80,      // Région Méditerranéenne (Maroc, Tunisie)
-  sub_saharan: 120,       // Afrique subsaharienne est (Éthiopie, Kenya)
+export const BIODIVERSITY_PRESERVATION_FACTORS: Record<string, number> = {
+  'Agriculture biologique': 0.30,
+  'Permaculture': 0.45,
+  'Biodynamie': 0.40,
+  'Agroforesterie': 0.60,
+  'Agriculture raisonnée': 0.15,
+  'Conventionnelle': 0.0,
 };
 
-/**
- * Trees preserved per hectare by practice
- */
-export const TREES_PRESERVED_PER_HA: Record<string, number> = {
-  organic: 80,
-  agroforestry: 200,
-  permaculture: 160,
-  organic_shade: 220,
+export const BIODIVERSITY_TREE_DENSITY: Record<string, number> = {
+  'Agriculture biologique': 40,
+  'Agroforesterie': 200,
+  'Permaculture': 120,
+  'Biodynamie': 80,
+  'Agriculture raisonnée': 20,
+  'Conventionnelle': 5,
 };
 
-/**
- * ACP (Africa, Caribbean, Pacific) Countries exempt from EU import duties under EPA/EBA
- */
 export const ACP_COUNTRIES = [
   'éthiopie', 'ethiopia', 'ghana', 'kenya', 'madagascar', 'maroc', 'morocco',
   'côte d\'ivoire', 'ivory coast', 'cameroun', 'cameroon', 'tanzanie', 'tanzania',
   'sénégal', 'senegal', 'togo', 'bénin', 'benin', 'tunisie', 'tunisia', 'ouganda', 'uganda',
-  'rwanda', 'mali', 'burkina faso', 'guinée', 'guinea'
+  'rwanda', 'mali', 'burkina faso', 'guinée', 'guinea', 'gabon', 'nigéria', 'nigeria'
 ];
 
-/**
- * Real distances between producing countries and destination countries (km)
- */
-export const TRADE_DISTANCES: Record<string, { air: number; sea: number }> = {
-  'éthiopie-france': { air: 5800, sea: 8200 },
-  'ghana-france': { air: 5100, sea: 6500 },
-  'kenya-france': { air: 6500, sea: 9800 },
-  'madagascar-france': { air: 8700, sea: 11500 },
-  'maroc-france': { air: 2000, sea: 2800 },
-  'côte d\'ivoire-france': { air: 4800, sea: 6200 },
-  'cameroun-france': { air: 5000, sea: 6800 },
-  'tanzanie-france': { air: 7200, sea: 10500 },
-  'sénégal-france': { air: 4200, sea: 5500 },
+export const TRADE_DISTANCES: Record<string, number> = {
+  'Éthiopie-France': 5800,
+  'Ghana-France': 5100,
+  'Kenya-France': 6500,
+  'Madagascar-France': 8700,
+  'Maroc-France': 2000,
+  'Côte d\'Ivoire-France': 4800,
+  'Cameroun-France': 5000,
+  'Sénégal-France': 4200,
+  'Tanzanie-France': 7200,
+  'Iran-France': 4500,
+  'Bénin-France': 4700,
+  'Gabon-France': 5400,
+  'Nigéria-France': 4600,
 };
 
-/**
- * Minimum monthly living wage standards (USD/EUR equivalent) by country (Fairtrade / Anker Methodology)
- */
 export const LIVING_WAGES: Record<string, number> = {
   'éthiopie': 180,
   'ghana': 220,
@@ -186,9 +224,6 @@ export const LIVING_WAGES: Record<string, number> = {
   'default': 210,
 };
 
-/**
- * European Union Food & General VAT Rates by Destination Country
- */
 export const EU_VAT_RATES: Record<string, { food: number; general: number }> = {
   'france': { food: 0.055, general: 0.20 },
   'allemagne': { food: 0.07, general: 0.19 },

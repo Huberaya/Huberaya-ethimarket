@@ -1,10 +1,10 @@
-import { Sprout, Globe, Users, Heart, Droplets, TreePine, GraduationCap, ShieldCheck, Scale, Award } from 'lucide-react';
+import { Sprout, Globe, Users, Heart, Droplets, TreePine, GraduationCap, ShieldCheck, Scale, Award, Info } from 'lucide-react';
 import type { Product } from '../../lib/supabase';
 import { SectionTitle } from './GuaranteesSection';
 import {
   calculateCarbonFootprint,
   calculateWaterFootprint,
-  calculateBiodiversityImpact,
+  calculateBiodiversity,
   calculateEconomicImpact,
   calculateSocialImpact,
 } from '../../lib/calculations';
@@ -15,38 +15,39 @@ export default function ImpactSection({
   quantity,
 }: {
   product: Product;
-  producer?: any;
+  producer?: Record<string, unknown> | null;
   quantity: number;
 }) {
   const qtyKg = Math.max(1, quantity);
   const orderAmount = (product.price || 0) * qtyKg;
-  const productType = product.category_name || product.name || 'café';
-  const originCountry = product.country || producer?.country || 'Éthiopie';
 
   // Dynamic calculations based on scientific models
-  const carbon = calculateCarbonFootprint(productType, qtyKg, originCountry, 'France', 'sea', 'jute', 0.05);
-  const water = calculateWaterFootprint(productType, qtyKg);
-  const surfaceHa = Math.max(0.1, Math.round((qtyKg / 500) * 100) / 100);
-  const bio = calculateBiodiversityImpact(surfaceHa, 'organic_shade', 'tropical_africa');
-  const eco = calculateEconomicImpact(orderAmount, 'EUR', originCountry);
-  const soc = calculateSocialImpact(orderAmount, producer?.employees_count || 10);
+  const carbon = calculateCarbonFootprint(product, producer, qtyKg, 'France', 'maritime');
+  const water = calculateWaterFootprint(product, producer, qtyKg);
+  const bio = calculateBiodiversity(producer, qtyKg, product);
+  const eco = calculateEconomicImpact(product, producer, qtyKg, orderAmount);
+  const soc = calculateSocialImpact(producer, qtyKg, orderAmount);
+
+  const producerSourceBadge = producer?.surface_value || producer?.farm_size || producer?.full_time_employees || producer?.families_impacted
+    ? '📊 Données producteur'
+    : '📈 Estimation sectorielle';
 
   return (
     <section className="py-12 border-t border-gray-100">
-      <SectionTitle icon={Sprout} title="Votre impact positif" />
+      <SectionTitle icon={Sprout} title="Votre impact positif certifié" />
 
       <div className="bg-brand-50/60 rounded-2xl p-4 border border-brand-100 my-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-sm text-gray-700">
-            Impact mesuré pour <span className="font-bold text-gray-900">{qtyKg.toLocaleString('fr-FR')} {product.price_unit}</span> de {product.name} ({orderAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €)
+            Impact mesuré pour <span className="font-bold text-gray-900">{qtyKg.toLocaleString('fr-FR')} {product.price_unit || 'kg'}</span> de {product.name} ({orderAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €)
           </p>
           <p className="text-xs text-brand-700 font-medium mt-0.5">
-            ⚡ Tous les indicateurs se mettent à jour en temps réel avec la quantité commandée.
+            ⚡ Calculs mis à jour en temps réel selon le GHG Protocol, ADEME Base Carbone® et Water Footprint Network.
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 bg-white px-3 py-1.5 rounded-xl border border-brand-200 shadow-2xs whitespace-nowrap">
           <ShieldCheck className="w-4 h-4 text-brand-600" />
-          Auditabilité scientifique certifiée
+          Transparent & Auditabilité Expert
         </span>
       </div>
 
@@ -54,32 +55,40 @@ export default function ImpactSection({
         {/* 1. Environmental */}
         <ImpactCard
           icon={TreePine}
-          title="Impact Environnemental"
-          subtitle="Méthodes : GHG Protocol + Water Footprint + IBAT"
+          title="Impact Climat & Eau"
+          subtitle="Méthodes : GHG Protocol + ADEME + Water Footprint"
           color="emerald"
         >
           <ImpactRow
             label="CO2 économisé"
             value={`${carbon.savedCO2e.toLocaleString('fr-FR')} kg CO2e`}
-            subtext="Méthode GHG Protocol Scope 1-3 (ADEME)"
+            sourceBadge={producerSourceBadge}
+            subtext="Calcul Scope 1-3 vs production conventionnelle"
+            methodology={carbon.methodology}
             icon={Sprout}
           />
           <ImpactRow
             label="Eau économisée"
             value={`${water.savedWaterL.toLocaleString('fr-FR')} Litres`}
-            subtext="Méthode Water Footprint Network"
+            sourceBadge="📈 Estimation sectorielle"
+            subtext="Volume préservé grâce au mode de culture"
+            methodology={water.methodology}
             icon={Droplets}
           />
           <ImpactRow
-            label="Arbres préservés"
+            label="Arbres préservés / planted"
             value={`${bio.treesPreserved.toLocaleString('fr-FR')} arbres`}
-            subtext="Méthode Agroforesterie FAO"
+            sourceBadge={producerSourceBadge}
+            subtext="Sur la surface d'exploitation associée"
+            methodology={bio.methodology}
             icon={TreePine}
           />
           <ImpactRow
-            label="Biodiversité protégée"
-            value={`${bio.speciesProtected} espèces/ha`}
-            subtext="Méthode Indice IBAT"
+            label="Biodiversité préservée"
+            value={`${bio.speciesProtected} espèces`}
+            sourceBadge={producerSourceBadge}
+            subtext="Basé sur les densités régionales (IBAT)"
+            methodology={bio.methodology}
             icon={Award}
           />
         </ImpactCard>
@@ -92,27 +101,35 @@ export default function ImpactSection({
           color="brand"
         >
           <ImpactRow
-            label="Prix au producteur (87%)"
+            label="Revenu producteur (87%)"
             value={`${eco.producerRevenue.toLocaleString('fr-FR')} €`}
-            subtext="Direct sans intermédiaire (vs 40% habituel)"
+            sourceBadge="📊 Modèle EthiMarket"
+            subtext="Paiement direct sans intermédiaire commercial"
+            methodology={eco.methodology}
             icon={Scale}
           />
           <ImpactRow
             label="Familles bénéficiaires"
-            value={`${eco.familiesBeneficiary} familles`}
-            subtext="Taille moyenne 4.5 pers/foyer"
+            value={`${eco.familiesBeneficiary} famille(s)`}
+            sourceBadge={eco.inputs.dataSource}
+            subtext="Basé sur l'impact d'exploitation calculé"
+            methodology={eco.methodology}
             icon={Users}
           />
           <ImpactRow
             label="Gain vs conventionnel"
             value={`+${eco.revenueIncrease}%`}
-            subtext="Revenu net garanti supérieur au living wage"
+            sourceBadge="📊 Modèle EthiMarket"
+            subtext="Revenu net garanti supérieur au prix du marché"
+            methodology={eco.methodology}
             icon={Globe}
           />
           <ImpactRow
-            label="Prime Fairtrade réservée"
+            label="Prime développement"
             value={`${eco.fairtradePremuim.toLocaleString('fr-FR')} €`}
-            subtext="Investissement projets communautaires"
+            sourceBadge="📊 Modèle EthiMarket"
+            subtext="Fonds géré directement par la coopérative"
+            methodology={eco.methodology}
             icon={ShieldCheck}
           />
         </ImpactCard>
@@ -120,41 +137,49 @@ export default function ImpactSection({
         {/* 3. Social */}
         <ImpactCard
           icon={Heart}
-          title="Impact Social & Communautaire"
+          title="Impact Social & Emploi"
           subtitle="Méthode : UN SDG Framework 2030"
           color="amber"
         >
           <ImpactRow
             label="Emplois soutenus"
-            value={`${soc.jobsSupported} personnes`}
-            subtext="Emplois locaux décents durables"
+            value={`${soc.jobsSupported} personne(s)`}
+            sourceBadge={soc.inputs.dataSource}
+            subtext="Emplois agricoles décents et locaux"
+            methodology={soc.methodology}
             icon={Users}
           />
           <ImpactRow
-            label="Formation dispensée"
-            value={`${soc.trainingHours} heures`}
-            subtext="Bilan & pratiques durables"
+            label="Formation technique"
+            value={`${soc.trainingHours} heure(s)`}
+            sourceBadge="📊 Modèle EthiMarket"
+            subtext="Budget dédié aux bonnes pratiques"
+            methodology={soc.methodology}
             icon={GraduationCap}
           />
           <ImpactRow
-            label="Éducation & écoles"
+            label="Fonds Éducation"
             value={`${soc.educationContribution.toLocaleString('fr-FR')} €`}
-            subtext={`${soc.childrenImpacted} enfant(s) scolarisé(s)`}
+            sourceBadge="📊 Modèle EthiMarket"
+            subtext={`Soutient ~${soc.childrenImpacted} enfant(s)`}
+            methodology={soc.methodology}
             icon={Heart}
           />
           <ImpactRow
-            label="Couverture santé"
-            value="Guarantie 100%"
-            subtext="Soins d'urgence & assurance santé"
+            label="Garanties sociales"
+            value={soc.healthCoverage ? 'Couverture Santé' : 'Garanties de base'}
+            sourceBadge="📊 Données producteur"
+            subtext="Assurance maladie & congés payés"
+            methodology={soc.methodology}
             icon={ShieldCheck}
           />
         </ImpactCard>
       </div>
 
-      {/* Methodological notice */}
-      <div className="mt-8 bg-gray-50 rounded-2xl p-4 border border-gray-200 text-center text-xs text-gray-500 font-medium">
+      {/* Global Disclaimer */}
+      <div className="mt-8 bg-gray-50 rounded-2xl p-4 border border-gray-200 text-center text-xs text-gray-600 font-medium leading-relaxed">
         <p>
-          ⚖️ <span className="font-bold text-gray-700">Traçabilité & Méthodologies :</span> Calculs basés sur <span className="font-semibold text-gray-800">GHG Protocol (Scopes 1, 2, 3)</span>, <span className="font-semibold text-gray-800">ADEME Base Carbone®</span>, <span className="font-semibold text-gray-800">Water Footprint Network</span>, <span className="font-semibold text-gray-800">FAO Agroforestry</span>, et le cadre <span className="font-semibold text-gray-800">UN SDG Framework</span>.
+          ⚖️ <span className="font-bold text-gray-800">Avertissement de transparence :</span> Les impacts sont calculés sur la base des données déclarées par le producteur et des facteurs d'émission reconnus internationalement (ADEME Base Carbone®, GHG Protocol, Water Footprint Network, IBAT & FAO). Les résultats sont des estimations indicatives auditables.
         </p>
       </div>
     </section>
@@ -181,7 +206,7 @@ function ImpactCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-card flex flex-col justify-between">
+    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm flex flex-col justify-between">
       <div>
         <div className="flex items-center gap-3 mb-2">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colors[color]}`}>
@@ -189,7 +214,7 @@ function ImpactCard({
           </div>
           <div>
             <h3 className="font-bold text-gray-900 text-sm leading-tight">{title}</h3>
-            <p className="text-[10px] text-gray-400 font-medium">{subtitle}</p>
+            <p className="text-[10px] text-gray-500 font-medium">{subtitle}</p>
           </div>
         </div>
         <div className="space-y-3 mt-4">{children}</div>
@@ -201,24 +226,43 @@ function ImpactCard({
 function ImpactRow({
   label,
   value,
+  sourceBadge,
   subtext,
+  methodology,
   icon: Icon,
 }: {
   label: string;
   value: string;
+  sourceBadge?: string;
   subtext?: string;
+  methodology?: string;
   icon?: typeof Sprout;
 }) {
   return (
-    <div className="bg-gray-50/70 p-2.5 rounded-xl border border-gray-100">
+    <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-gray-600 inline-flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-gray-700 inline-flex items-center gap-1.5">
           {Icon && <Icon className="w-3.5 h-3.5 text-brand-600 flex-shrink-0" />}
           {label}
         </span>
         <span className="text-xs font-black text-gray-900 text-right">{value}</span>
       </div>
-      {subtext && <p className="text-[10px] text-gray-400 mt-0.5 ml-5">{subtext}</p>}
+
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        {subtext && <p className="text-[10px] text-gray-500">{subtext}</p>}
+        {sourceBadge && (
+          <span className="text-[9px] font-bold text-gray-600 bg-white px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap ml-auto">
+            {sourceBadge}
+          </span>
+        )}
+      </div>
+
+      {methodology && (
+        <p className="text-[9px] text-gray-400 italic border-t border-gray-100 pt-1 mt-1 flex items-center gap-1">
+          <Info className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
+          <span>Méthode: {methodology}</span>
+        </p>
+      )}
     </div>
   );
 }

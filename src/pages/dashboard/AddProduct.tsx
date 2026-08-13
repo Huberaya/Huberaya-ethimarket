@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Check, ArrowLeft, Loader2, Sprout, PackagePlus } from 'lucide-react';
+import { Upload, Check, ArrowLeft, Loader2, Sprout, PackagePlus, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { supabase, type Category } from '../../lib/supabase';
 import { COUNTRIES, getCountryFlag } from '../../lib/countries';
@@ -9,13 +9,23 @@ import { cleanPayload, toFloatOrNull, toIntOrNull, toStringOrNull, toDateOrNull 
 const CERT_OPTIONS = ['Bio', 'Fairtrade', 'Ecocert', 'Rainforest Alliance', 'GlobalGAP'];
 const CURRENCIES = ['EUR', 'USD', 'MAD', 'XOF'];
 const UNITS = ['kg', 'g', 'L', 'mL', 'pièce', 'palette', 'tonnes'];
+
 const FARMING_METHODS = [
   'Agriculture biologique',
   'Permaculture',
   'Biodynamie',
   'Agroforesterie',
   'Agriculture raisonnée',
-  'Traditionnelle'
+  'Conventionnelle'
+];
+
+const PACKAGING_TYPES = [
+  'Jute biodégradable',
+  'Carton recyclé',
+  'Sac papier',
+  'Plastique recyclable',
+  'Verre',
+  'Autre'
 ];
 
 const slugify = (s: string) =>
@@ -43,23 +53,23 @@ export default function AddProduct() {
     moq_unit: 'kg',
     stock_value: '10',
     stock_unit: 'kg',
-    country: 'France',
+    country: 'Éthiopie',
     region: '',
     certifications: [] as string[],
+    farming_method: 'Agriculture biologique',
+    packaging_type: 'Jute biodégradable',
     planting_date: '',
     harvest_date: '',
     packaging_date: '',
-    farming_method: '',
     gps_coordinates: '',
-    co2_estimate: '',
     batch_number: '',
+    co2_estimate: '',
   });
 
   // Load categories and auto-retrieve or auto-create user's producer profile
   useEffect(() => {
     let isMounted = true;
 
-    // Load categories
     supabase.from('categories').select('*').order('name')
       .then(({ data }) => {
         if (isMounted && data) setCategories(data);
@@ -72,22 +82,23 @@ export default function AddProduct() {
       }
 
       try {
-        // 1. Try finding existing producer record
         const { data: existingProducer, error: fetchErr } = await supabase
           .from('producers')
-          .select('id')
+          .select('id, country')
           .eq('user_id', user.id)
           .maybeSingle();
 
         if (!fetchErr && existingProducer?.id) {
           if (isMounted) {
             setProducerId(existingProducer.id);
+            if (existingProducer.country) {
+              setForm(f => ({ ...f, country: existingProducer.country }));
+            }
             setLoadingProducer(false);
           }
           return;
         }
 
-        // 2. If no producer exists, create one automatically
         const fullName =
           (user.user_metadata?.full_name) ||
           [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') ||
@@ -96,18 +107,16 @@ export default function AddProduct() {
 
         const slug = slugify(`${fullName}-${Date.now().toString().slice(-4)}`);
         const initials = fullName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() || 'EM';
-        const colors = ['#15803d', '#92400e', '#b45309', '#7c2d12', '#0369a1'];
-        const color = colors[Math.floor(Math.random() * colors.length)];
 
         const newProducerPayload = cleanPayload({
           user_id: user.id,
           name: fullName,
           slug: slug,
-          country: 'France',
-          country_flag: '🇫🇷',
+          country: 'Éthiopie',
+          country_flag: '🇪🇹',
           avatar_initials: initials,
-          avatar_color: color,
-          banner_color: color,
+          avatar_color: '#15803d',
+          banner_color: '#15803d',
           verified: false,
           top_seller: false,
           rating: 0,
@@ -176,13 +185,44 @@ export default function AddProduct() {
       return;
     }
 
+    // MANDATORY FIELD VALIDATIONS
     if (!form.name.trim()) {
       setError('Le nom du produit est obligatoire.');
       return;
     }
 
+    if (!form.category_id) {
+      setError('La catégorie du produit est obligatoire.');
+      return;
+    }
+
     if (!form.price || parseFloat(form.price) <= 0) {
-      setError('Le prix doit être un nombre supérieur à 0.');
+      setError('Le prix unitaire est obligatoire et doit être un nombre supérieur à 0.');
+      return;
+    }
+
+    if (!form.moq_value || parseInt(form.moq_value) < 1) {
+      setError('La quantité minimale de commande (MOQ) est obligatoire.');
+      return;
+    }
+
+    if (form.stock_value === '' || parseInt(form.stock_value) < 0) {
+      setError('Le stock disponible est obligatoire.');
+      return;
+    }
+
+    if (!form.country) {
+      setError('Le pays d\'origine est obligatoire.');
+      return;
+    }
+
+    if (!form.farming_method) {
+      setError('La méthode de culture est obligatoire pour calculer précisément le bilan carbone et l\'impact biodiversité.');
+      return;
+    }
+
+    if (!form.packaging_type) {
+      setError('Le type d\'emballage est obligatoire pour le calcul de l\'empreinte écologique.');
       return;
     }
 
@@ -190,7 +230,6 @@ export default function AddProduct() {
     setSubmitting(true);
 
     try {
-      // Ensure we have a valid producer ID
       let currentProducerId = producerId;
 
       if (!currentProducerId) {
@@ -203,7 +242,6 @@ export default function AddProduct() {
         if (pData?.id) {
           currentProducerId = pData.id;
         } else {
-          // Fallback auto-creation if not created earlier
           const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Producteur';
           const slug = slugify(`${fullName}-${Date.now().toString().slice(-4)}`);
 
@@ -213,8 +251,8 @@ export default function AddProduct() {
               user_id: user.id,
               name: fullName,
               slug: slug,
-              country: form.country || 'France',
-              country_flag: getCountryFlag(form.country || 'France'),
+              country: form.country || 'Éthiopie',
+              country_flag: getCountryFlag(form.country || 'Éthiopie'),
               verified: false,
               rating: 0,
               profile_status: 'incomplete'
@@ -229,7 +267,6 @@ export default function AddProduct() {
         }
       }
 
-      // Handle product image upload
       let imageUrl: string | null = null;
       if (imageFile) {
         const ext = imageFile.name.split('.').pop();
@@ -237,13 +274,12 @@ export default function AddProduct() {
         const { error: uploadErr } = await supabase.storage.from('products').upload(fileName, imageFile);
 
         if (uploadErr) {
-          throw new Error('Erreur lors du téléversement de la photo du produit: ' + uploadErr.message);
+          throw new Error('Erreur lors du téléversement de la photo: ' + uploadErr.message);
         }
 
         imageUrl = supabase.storage.from('products').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // Build product insert payload using cleanPayload
       const productSlug = slugify(`${form.name}-${Date.now().toString().slice(-4)}`);
       const countryFlag = getCountryFlag(form.country);
 
@@ -253,7 +289,8 @@ export default function AddProduct() {
         name: toStringOrNull(form.name),
         slug: productSlug,
         category_id: toStringOrNull(form.category_id),
-        country: toStringOrNull(form.country) ?? 'France',
+        country: toStringOrNull(form.country) ?? 'Éthiopie',
+        origin_country: toStringOrNull(form.country) ?? 'Éthiopie',
         country_flag: countryFlag,
         region: toStringOrNull(form.region),
         short_description: toStringOrNull(form.short_description),
@@ -280,16 +317,16 @@ export default function AddProduct() {
         harvest_date: toDateOrNull(form.harvest_date),
         packaging_date: toDateOrNull(form.packaging_date),
         farming_method: toStringOrNull(form.farming_method),
+        cultivation_method: toStringOrNull(form.farming_method),
+        packaging_type: toStringOrNull(form.packaging_type),
         gps_coordinates: toStringOrNull(form.gps_coordinates),
         co2_estimate: toStringOrNull(form.co2_estimate),
         batch_number: toStringOrNull(form.batch_number),
       };
 
-      let payloadToInsert: Record<string, any> = cleanPayload(rawProductData);
+      const payloadToInsert: Record<string, unknown> = cleanPayload(rawProductData);
       let insertResult = await supabase.from('products').insert(payloadToInsert);
 
-      // Dynamic fallback: If Supabase throws an error about a missing column in the schema cache or database,
-      // extract the missing column name, strip it from the payload, and retry automatically.
       let maxAttempts = 20;
       while (insertResult.error && maxAttempts > 0) {
         const errMsg = insertResult.error.message || '';
@@ -312,7 +349,6 @@ export default function AddProduct() {
         throw new Error('Erreur lors de la sauvegarde du produit: ' + insertResult.error.message);
       }
 
-      // Navigate back to product list with success message
       navigate('/dashboard/mes-produits?success=1');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Une erreur inattendue est survenue.';
@@ -340,8 +376,16 @@ export default function AddProduct() {
           </div>
           <div>
             <h1 className="text-2xl font-black text-gray-900">Ajouter un produit</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Renseignez les informations et la traçabilité de votre produit</p>
+            <p className="text-gray-500 text-sm mt-0.5">Renseignez les données d'exploitation réelles pour générer vos impacts scientifiques</p>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-brand-50/70 rounded-2xl p-4 border border-brand-100 mb-6 flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-brand-600 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-brand-900 leading-relaxed">
+          <p className="font-bold mb-1">💡 Transparence Scientifique EthiMarket :</p>
+          Vous n'avez pas besoin de calculer vous-même votre bilan carbone ou empreinte eau. Notre moteur expert transforme automatiquement vos données terrain réelles (méthode de culture, emballage, origine) en impacts certifiés via les facteurs ADEME & Water Footprint Network.
         </div>
       </div>
 
@@ -359,7 +403,7 @@ export default function AddProduct() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Image upload */}
+          {/* Photo */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
             <label className={labelClass}>Photo principale du produit</label>
             <div className="flex items-center gap-5 mt-2">
@@ -389,70 +433,137 @@ export default function AddProduct() {
                   {imageFile ? "Changer la photo" : "Téléverser une photo"}
                 </label>
                 <p className="text-xs text-gray-400 mt-2">
-                  Format JPG, PNG ou WebP. Taille maximale : 5 Mo.
+                  Format JPG, PNG ou WebP. Max 5 Mo.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Basic information */}
+          {/* General info */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
             <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">Informations générales</h2>
+            
             <div>
-              <label className={labelClass}>Nom du produit *</label>
+              <label className={labelClass}>
+                Nom du produit <span className="text-red-500 font-bold">*</span>
+              </label>
               <input
                 type="text"
                 required
                 value={form.name}
                 onChange={e => update('name', e.target.value)}
-                placeholder="Ex: Huile d'Argan Bio Pur Pressée à Froid 250ml"
+                placeholder="Ex: Café Arabica Yirgacheffe Grand Cru Bio 1kg"
                 className={inputClass}
               />
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>
+                  Catégorie du produit <span className="text-red-500 font-bold">*</span>
+                </label>
+                <select
+                  required
+                  value={form.category_id}
+                  onChange={e => update('category_id', e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Sélectionner une catégorie...</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.emoji ? `${c.emoji} ` : ''}{c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  Méthode de culture <span className="text-red-500 font-bold">*</span>
+                </label>
+                <select
+                  required
+                  value={form.farming_method}
+                  onChange={e => update('farming_method', e.target.value)}
+                  className={inputClass}
+                >
+                  {FARMING_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Nécessaire pour les facteurs d'émission CO2 & biodiversité ADEME
+                </p>
+              </div>
+            </div>
+
             <div>
-              <label className={labelClass}>Catégorie</label>
+              <label className={labelClass}>
+                Type d'emballage <span className="text-red-500 font-bold">*</span>
+              </label>
               <select
-                value={form.category_id}
-                onChange={e => update('category_id', e.target.value)}
+                required
+                value={form.packaging_type}
+                onChange={e => update('packaging_type', e.target.value)}
                 className={inputClass}
               >
-                <option value="">Sélectionner une catégorie...</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.emoji ? `${c.emoji} ` : ''}{c.name}
-                  </option>
-                ))}
+                {PACKAGING_TYPES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
+              <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Détermine l'empreinte emballage (ADEME 2024)
+              </p>
             </div>
+
             <div>
-              <label className={labelClass}>Résumé court (aperçu)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className={labelClass}>Résumé court (aperçu)</label>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  Améliore votre score +2 pts
+                </span>
+              </div>
               <input
                 type="text"
                 value={form.short_description}
                 onChange={e => update('short_description', e.target.value)}
-                placeholder="Ex: Huile 100% pure produite artisanalement dans le Souss-Massa."
+                placeholder="Ex: Café pure origine cultivé sous ombrage naturel à 2000m d'altitude."
                 className={inputClass}
                 maxLength={140}
               />
+              {!form.short_description && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  💡 Renseigner ce champ améliore votre Score EthiMarket de +2 points et augmente la confiance des acheteurs.
+                </p>
+              )}
             </div>
+
             <div>
-              <label className={labelClass}>Description détaillée</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className={labelClass}>Description détaillée & Terroir</label>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  Améliore votre score +4 pts
+                </span>
+              </div>
               <textarea
                 rows={4}
                 value={form.description}
                 onChange={e => update('description', e.target.value)}
-                placeholder="Décrivez votre produit : méthode d'extraction, qualités gustatives, bienfaits, engagements éthiques..."
+                placeholder="Décrivez votre terroir, les techniques de récolte manuelle, la coopérative et les histoires de familles..."
                 className={`${inputClass} resize-none`}
               />
+              {!form.description && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  💡 Renseigner une description détaillée améliore votre Score EthiMarket de +4 points.
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Price, Stock and MOQ */}
+          {/* Pricing & Stock */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
             <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">Prix, Unité et Stock</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className={labelClass}>Prix unitaire *</label>
+                <label className={labelClass}>
+                  Prix unitaire <span className="text-red-500 font-bold">*</span>
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -471,7 +582,9 @@ export default function AddProduct() {
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Unité de mesure</label>
+                <label className={labelClass}>
+                  Unité de mesure <span className="text-red-500 font-bold">*</span>
+                </label>
                 <select
                   value={form.moq_unit}
                   onChange={e => {
@@ -487,7 +600,9 @@ export default function AddProduct() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Commande minimale (MOQ) *</label>
+                <label className={labelClass}>
+                  Commande minimale (MOQ) <span className="text-red-500 font-bold">*</span>
+                </label>
                 <input
                   type="number"
                   required
@@ -497,29 +612,32 @@ export default function AddProduct() {
                   placeholder="1"
                   className={inputClass}
                 />
-                <p className="text-xs text-gray-400 mt-1">Quantité minimale qu'un client doit commander.</p>
               </div>
               <div>
-                <label className={labelClass}>Stock disponible</label>
+                <label className={labelClass}>
+                  Stock disponible <span className="text-red-500 font-bold">*</span>
+                </label>
                 <input
                   type="number"
+                  required
                   min="0"
                   value={form.stock_value}
                   onChange={e => update('stock_value', e.target.value)}
                   placeholder="0"
                   className={inputClass}
                 />
-                <p className="text-xs text-gray-400 mt-1">Quantité globale actuellement en stock.</p>
               </div>
             </div>
           </div>
 
           {/* Origin */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-            <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">Origine & Terroir</h2>
+            <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">Origine & Traçabilité Régionale</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Pays d'origine</label>
+                <label className={labelClass}>
+                  Pays d'origine <span className="text-red-500 font-bold">*</span>
+                </label>
                 <select value={form.country} onChange={e => update('country', e.target.value)} className={inputClass}>
                   {COUNTRIES.map(c => (
                     <option key={c.code} value={c.name}>
@@ -529,12 +647,12 @@ export default function AddProduct() {
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Région / Terroir</label>
+                <label className={labelClass}>Région / Vallée / Terroir</label>
                 <input
                   type="text"
                   value={form.region}
                   onChange={e => update('region', e.target.value)}
-                  placeholder="Ex: Souss-Massa, Provence, Atlas"
+                  placeholder="Ex: Yirgacheffe, Kaffa, Sidama"
                   className={inputClass}
                 />
               </div>
@@ -543,8 +661,13 @@ export default function AddProduct() {
 
           {/* Certifications */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-            <label className={labelClass}>Certifications & Labels</label>
-            <p className="text-xs text-gray-500 mb-3">Sélectionnez les certifications applicables à ce produit :</p>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelClass}>Certifications & Labels</label>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                Garantit les exonérations douanières UE 0%
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Sélectionnez les certifications valides de votre exploitation :</p>
             <div className="flex flex-wrap gap-2.5">
               {CERT_OPTIONS.map(cert => {
                 const isSelected = form.certifications.includes(cert);
@@ -570,11 +693,15 @@ export default function AddProduct() {
           {/* Traceability */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
             <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3 flex items-center gap-2">
-              <Sprout className="w-5 h-5 text-brand-600" /> Traçabilité & Transparent Sourcing
+              <Sprout className="w-5 h-5 text-brand-600" /> Traçabilité de Récolte & Terroir
             </h2>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className={labelClass}>Date de plantation / production</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-gray-700">Date de plantation</label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">+2 pts</span>
+                </div>
                 <input
                   type="date"
                   value={form.planting_date}
@@ -582,8 +709,12 @@ export default function AddProduct() {
                   className={inputClass}
                 />
               </div>
+
               <div>
-                <label className={labelClass}>Date de récolte</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-gray-700">Date de récolte</label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">+3 pts</span>
+                </div>
                 <input
                   type="date"
                   value={form.harvest_date}
@@ -591,8 +722,12 @@ export default function AddProduct() {
                   className={inputClass}
                 />
               </div>
+
               <div>
-                <label className={labelClass}>Date de conditionnement</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-gray-700">Date d'emballage</label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">+2 pts</span>
+                </div>
                 <input
                   type="date"
                   value={form.packaging_date}
@@ -604,48 +739,41 @@ export default function AddProduct() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Méthode de culture / production</label>
-                <select
-                  value={form.farming_method}
-                  onChange={e => update('farming_method', e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">Sélectionner une méthode...</option>
-                  {FARMING_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Numéro de lot (Batch)</label>
-                <input
-                  type="text"
-                  value={form.batch_number}
-                  onChange={e => update('batch_number', e.target.value)}
-                  placeholder="Ex: LOT-2026-A04"
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Coordonnées GPS de la parcelle</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-gray-700">Coordonnées GPS de la parcelle</label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">+5 pts</span>
+                </div>
                 <input
                   type="text"
                   value={form.gps_coordinates}
                   onChange={e => update('gps_coordinates', e.target.value)}
-                  placeholder="Ex: 30.421, -9.598"
+                  placeholder="Ex: 6.134, 38.204"
                   className={inputClass}
                 />
+                {!form.gps_coordinates && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    💡 Renseigner vos coordonnées GPS améliore votre Score EthiMarket de +5 points et débloque la carte satellite.
+                  </p>
+                )}
               </div>
+
               <div>
-                <label className={labelClass}>Empreinte CO2 estimée</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-gray-700">Numéro de lot (Batch)</label>
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">+3 pts</span>
+                </div>
                 <input
                   type="text"
-                  value={form.co2_estimate}
-                  onChange={e => update('co2_estimate', e.target.value)}
-                  placeholder="Ex: 0.45 kg CO2e / kg"
+                  value={form.batch_number}
+                  onChange={e => update('batch_number', e.target.value)}
+                  placeholder="Ex: LOT-2026-YIRG-01"
                   className={inputClass}
                 />
+                {!form.batch_number && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    💡 Renseigner le numéro de lot améliore votre Score EthiMarket de +3 points.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -655,7 +783,7 @@ export default function AddProduct() {
             <button
               type="submit"
               disabled={submitting}
-              className="btn-primary flex-1 py-4 text-base font-bold inline-flex items-center justify-center gap-2 rounded-xl shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 py-4 text-base font-bold inline-flex items-center justify-center gap-2 rounded-xl shadow-md disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {submitting ? (
                 <>
@@ -668,7 +796,7 @@ export default function AddProduct() {
             <button
               type="button"
               onClick={() => navigate('/dashboard/mes-produits')}
-              className="px-6 py-4 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+              className="px-6 py-4 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
             >
               Annuler
             </button>

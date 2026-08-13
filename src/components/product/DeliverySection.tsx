@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Truck, Plane, Ship, Calculator, FileCheck, Info, Leaf, ShieldCheck } from 'lucide-react';
+import { Truck, Plane, Ship, Calculator, FileCheck, Leaf, ShieldCheck } from 'lucide-react';
 import type { Product } from '../../lib/supabase';
 import { SectionTitle } from './GuaranteesSection';
 import { calculateShipping, calculateCustomsAndVAT, calculateOrderTotal } from '../../lib/calculations';

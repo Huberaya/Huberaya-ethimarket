@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, MessageSquare, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
+import { Search, MessageSquare, ShoppingBag, Loader2 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { supabase, type Conversation, type Producer, type Profile } from '../../lib/supabase';
 import { ChatView } from './ChatView';

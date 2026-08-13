@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send, Paperclip, CheckCheck, Check, FileText, Image as ImageIcon,
+  Send, Paperclip, CheckCheck, Check, FileText,
   ExternalLink, ShieldCheck, MapPin, X, Loader2, ArrowLeft
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { supabase, type ChatMessage, type Conversation, type Producer, type Profile } from '../../lib/supabase';
+import { supabase, type ChatMessage, type Conversation } from '../../lib/supabase';
 
 type InterlocutorInfo = {
   id: string;

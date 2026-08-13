@@ -34,12 +34,6 @@ const CERTS = [
 
 const PER_PAGE = 12;
 
-/* ─── Subcomponents ─────────────────────────────────────── */
-
-function Skeleton() {
-  return <div className="bg-gray-100 rounded-2xl h-80 skeleton" />;
-}
-
 /* ─── Main component ─────────────────────────────────────── */
 
 export default function Catalogue() {

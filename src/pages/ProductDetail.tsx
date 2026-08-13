@@ -24,12 +24,6 @@ import StickyActions from '../components/product/StickyActions';
 import {
   calculateEthiMarketScore,
   calculateVolumeDiscounts,
-  calculateEnvironmentalImpact,
-  calculateEconomicImpact,
-  calculateSocialImpact,
-  calculateShipping,
-  calculateCustomsAndVAT,
-  calculateOrderTotal,
   checkEUConformity,
   calculateProfileCompletion
 } from '../lib/calculations';
