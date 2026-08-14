@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #111827;
+    background: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+
+  ::selection {
+    background: #bbf7d0;
+    color: #14532d;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-brand-500 text-white font-semibold rounded-xl hover:bg-brand-600 active:bg-brand-700 transition-all duration-150 shadow-sm text-sm;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 border-2 border-brand-500 text-brand-600 font-semibold rounded-xl hover:bg-brand-50 active:bg-brand-100 transition-all duration-150 text-sm;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl border border-gray-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-300;
+  }
+
+  .badge-bio        { @apply bg-green-100 text-green-800 border border-green-200; }
+  .badge-fairtrade  { @apply bg-blue-100  text-blue-800  border border-blue-200; }
+  .badge-ecocert    { @apply bg-amber-100 text-amber-800 border border-amber-200; }
+  .badge-rainforest { @apply bg-teal-100  text-teal-800  border border-teal-200; }
+  .badge-globalgap  { @apply bg-orange-100 text-orange-800 border border-orange-200; }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  .text-balance { text-wrap: balance; }
+
+  .skeleton {
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
