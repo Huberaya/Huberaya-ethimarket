@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS certification_bodies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   acronym TEXT,
-  country TEXT NOT NULL,
-  region certification_region_enum NOT NULL,
+  country TEXT NOT NULL DEFAULT 'France',
+  region certification_region_enum NOT NULL DEFAULT 'Europe',
   sub_region TEXT,
   website TEXT,
   verification_url TEXT,
@@ -85,6 +85,86 @@ CREATE TABLE IF NOT EXISTS certification_bodies (
   last_updated_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Sécurisation de l'alignement des colonnes si la table existait dans une version antérieure
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'certification_bodies') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'country') THEN
+      ALTER TABLE certification_bodies ADD COLUMN country TEXT;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'headquarters_country') THEN
+        UPDATE certification_bodies SET country = headquarters_country WHERE country IS NULL;
+      END IF;
+      UPDATE certification_bodies SET country = 'France' WHERE country IS NULL;
+      ALTER TABLE certification_bodies ALTER COLUMN country SET NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'acronym') THEN
+      ALTER TABLE certification_bodies ADD COLUMN acronym TEXT;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'short_name') THEN
+        UPDATE certification_bodies SET acronym = short_name WHERE acronym IS NULL;
+      END IF;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'region') THEN
+      ALTER TABLE certification_bodies ADD COLUMN region certification_region_enum NOT NULL DEFAULT 'Europe';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'sub_region') THEN
+      ALTER TABLE certification_bodies ADD COLUMN sub_region TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'email_contact') THEN
+      ALTER TABLE certification_bodies ADD COLUMN email_contact TEXT;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'contact_email') THEN
+        UPDATE certification_bodies SET email_contact = contact_email WHERE email_contact IS NULL;
+      END IF;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'phone') THEN
+      ALTER TABLE certification_bodies ADD COLUMN phone TEXT;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'contact_phone') THEN
+        UPDATE certification_bodies SET phone = contact_phone WHERE phone IS NULL;
+      END IF;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'api_endpoint') THEN
+      ALTER TABLE certification_bodies ADD COLUMN api_endpoint TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'api_key_required') THEN
+      ALTER TABLE certification_bodies ADD COLUMN api_key_required BOOLEAN DEFAULT false;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'api_key_encrypted') THEN
+      ALTER TABLE certification_bodies ADD COLUMN api_key_encrypted TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'whatsapp') THEN
+      ALTER TABLE certification_bodies ADD COLUMN whatsapp TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'contact_form_url') THEN
+      ALTER TABLE certification_bodies ADD COLUMN contact_form_url TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'languages') THEN
+      ALTER TABLE certification_bodies ADD COLUMN languages TEXT[] DEFAULT '{}';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'trust_level') THEN
+      ALTER TABLE certification_bodies ADD COLUMN trust_level trust_level_enum DEFAULT 'pending';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'internal_notes') THEN
+      ALTER TABLE certification_bodies ADD COLUMN internal_notes TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certification_bodies' AND column_name = 'last_updated_at') THEN
+      ALTER TABLE certification_bodies ADD COLUMN last_updated_at TIMESTAMPTZ DEFAULT now();
+    END IF;
+  END IF;
+END $$;
 
 -- TABLE 2 : certification_body_contacts (Contacts humains / auditeurs par organisme)
 CREATE TABLE IF NOT EXISTS certification_body_contacts (

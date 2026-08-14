@@ -6,24 +6,47 @@ import type {
   VerificationChannel,
   VerificationResult,
   CertificationDashboardStats,
-  CertificationVerificationLog,
   TemplateVariables,
   CertificationRegion
 } from './supabase';
 import { DAYS_BEFORE_EXPIRY_ALERT } from './supabase';
 
 /**
- * Remplace toutes les variables {{nom_variable}} dans un texte
+ * Remplace toutes les variables {{nom_variable}} ou {nom_variable} dans un texte
  */
 export function resolveTemplateVariables(
   template: string,
   variables: TemplateVariables
 ): string {
   if (!template) return '';
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
-    const val = variables[key as keyof TemplateVariables];
-    return val !== undefined && val !== null ? String(val) : '';
-  });
+  return template
+    .replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+      const val = variables[key as keyof TemplateVariables];
+      return val !== undefined && val !== null ? String(val) : '';
+    })
+    .replace(/\{(\w+)\}/g, (_, key) => {
+      const val = variables[key as keyof TemplateVariables];
+      return val !== undefined && val !== null ? String(val) : '';
+    });
+}
+
+/**
+ * Alias pour le rendu de templates avec un dictionnaire de variables
+ */
+export function renderTemplate(
+  template: string,
+  variables: Record<string, string | number | undefined | null>
+): string {
+  if (!template) return '';
+  return template
+    .replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+      const val = variables[key];
+      return val !== undefined && val !== null ? String(val) : '';
+    })
+    .replace(/\{(\w+)\}/g, (_, key) => {
+      const val = variables[key];
+      return val !== undefined && val !== null ? String(val) : '';
+    });
 }
 
 /**
@@ -786,29 +809,472 @@ export async function getCertificationDashboardStats(): Promise<{
 /**
  * Récupère le journal d'audit complet d'une certification producteur
  */
-export async function getCertificationLogs(
-  certificationId: string
+/**
+ * Récupère la liste filtrée et paginée des organismes certificateurs
+ */
+export async function getCertificationBodies(
+  filters?: CertificationBodyFilters,
+  page: number = 1,
+  pageSize: number = 50
 ): Promise<{
-  data: CertificationVerificationLog[];
+  data: CertificationBody[];
+  count: number;
+  error: string | null;
+}> {
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from('certification_bodies')
+      .select(`
+        *,
+        standards:certification_standards (*),
+        contacts:certification_body_contacts (*)
+      `, { count: 'exact' });
+
+    if (filters) {
+      if (filters.region && filters.region !== 'ALL') {
+        query = query.eq('region', filters.region);
+      }
+      if (filters.country) {
+        query = query.eq('country', filters.country);
+      }
+      if (filters.trust_level && filters.trust_level !== 'ALL') {
+        query = query.eq('trust_level', filters.trust_level);
+      }
+      if (filters.is_active !== undefined) {
+        query = query.eq('is_active', filters.is_active);
+      }
+      if (filters.has_api) {
+        query = query.not('api_endpoint', 'is', null);
+      }
+      if (filters.has_email) {
+        query = query.not('email_contact', 'is', null);
+      }
+      if (filters.search && filters.search.trim()) {
+        const term = `%${filters.search.trim()}%`;
+        query = query.or(`name.ilike.${term},acronym.ilike.${term},country.ilike.${term}`);
+      }
+    }
+
+    query = query.order('name', { ascending: true }).range(from, to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      return { data: [], count: 0, error: error.message };
+    }
+
+    return {
+      data: (data as CertificationBody[]) || [],
+      count: count || 0,
+      error: null
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur chargement organismes';
+    return { data: [], count: 0, error: msg };
+  }
+}
+
+/**
+ * Récupère un organisme certificateur par son identifiant avec standards, contacts et certifications
+ */
+export async function getCertificationBodyById(
+  id: string
+): Promise<{
+  data: (CertificationBody & { producer_certifications_count?: number }) | null;
   error: string | null;
 }> {
   try {
     const { data, error } = await supabase
-      .from('certification_verification_logs')
+      .from('certification_bodies')
       .select(`
         *,
-        admin_profile:profiles!admin_id (id, first_name, last_name, email)
+        standards:certification_standards (*),
+        contacts:certification_body_contacts (*)
       `)
-      .eq('producer_certification_id', certificationId)
-      .order('created_at', { ascending: false });
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return { data: null, error: error ? error.message : 'Organisme introuvable' };
+    }
+
+    // Récupération du nombre de certifications associées
+    const { count } = await supabase
+      .from('producer_certifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('certification_body_id', id);
+
+    return {
+      data: {
+        ...(data as CertificationBody),
+        producer_certifications_count: count || 0
+      },
+      error: null
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Crée un nouvel organisme de certification
+ */
+export async function createCertificationBody(
+  bodyData: Partial<CertificationBody>
+): Promise<{ data: CertificationBody | null; error: string | null }> {
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      name: bodyData.name,
+      acronym: bodyData.acronym || null,
+      country: bodyData.country || 'France',
+      region: bodyData.region || 'Europe',
+      sub_region: bodyData.sub_region || null,
+      website: bodyData.website || null,
+      verification_url: bodyData.verification_url || null,
+      api_endpoint: bodyData.api_endpoint || null,
+      api_key_required: bodyData.api_key_required ?? false,
+      api_key_encrypted: bodyData.api_key_encrypted || null,
+      email_contact: bodyData.email_contact || null,
+      phone: bodyData.phone || null,
+      whatsapp: bodyData.whatsapp || null,
+      contact_form_url: bodyData.contact_form_url || null,
+      languages: bodyData.languages || ['fr'],
+      certification_types: bodyData.certification_types || ['organic'],
+      trust_level: bodyData.trust_level || 'verified',
+      is_active: bodyData.is_active ?? true,
+      internal_notes: bodyData.internal_notes || null,
+      created_at: now,
+      last_updated_at: now
+    };
+
+    const { data, error } = await supabase
+      .from('certification_bodies')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationBody, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur création organisme';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Met à jour un organisme de certification
+ */
+export async function updateCertificationBody(
+  id: string,
+  updates: Partial<CertificationBody>
+): Promise<{ data: CertificationBody | null; error: string | null }> {
+  try {
+    const payload = {
+      ...updates,
+      last_updated_at: new Date().toISOString()
+    };
+    // Nettoyage des relations jointes avant l'update
+    delete (payload as Record<string, unknown>).standards;
+    delete (payload as Record<string, unknown>).contacts;
+    delete (payload as Record<string, unknown>).producer_certifications_count;
+
+    const { data, error } = await supabase
+      .from('certification_bodies')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationBody, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur mise à jour organisme';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Supprime un organisme de certification
+ */
+export async function deleteCertificationBody(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('certification_bodies')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur suppression organisme';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Ajoute un standard de certification à un organisme
+ */
+export async function addCertificationStandard(
+  standard: {
+    certification_body_id: string;
+    name: string;
+    code?: string | null;
+    type?: CertificationType | null;
+    description?: string | null;
+    scope?: string | null;
+    geographic_coverage?: string | null;
+  }
+): Promise<{ data: CertificationStandard | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('certification_standards')
+      .insert({
+        ...standard,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationStandard, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur ajout standard';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Supprime un standard de certification
+ */
+export async function deleteCertificationStandard(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('certification_standards')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur suppression standard';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Ajoute un contact à un organisme de certification
+ */
+export async function addCertificationBodyContact(
+  contact: {
+    certification_body_id: string;
+    name: string;
+    role?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    language?: string | null;
+    is_primary?: boolean;
+    notes?: string | null;
+  }
+): Promise<{ data: CertificationBodyContact | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('certification_body_contacts')
+      .insert({
+        ...contact,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationBodyContact, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur ajout contact';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Supprime un contact d'organisme de certification
+ */
+export async function deleteCertificationBodyContact(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('certification_body_contacts')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur suppression contact';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Récupère tous les templates de messages de vérification
+ */
+export async function getCertificationMessageTemplates(): Promise<{
+  data: CertificationMessageTemplate[];
+  error: string | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('certification_message_templates')
+      .select('*')
+      .order('channel', { ascending: true })
+      .order('is_default', { ascending: false });
 
     if (error) {
       return { data: [], error: error.message };
     }
 
-    return { data: (data as CertificationVerificationLog[]) || [], error: null };
+    return { data: (data as CertificationMessageTemplate[]) || [], error: null };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Erreur récupération logs';
+    const msg = err instanceof Error ? err.message : 'Erreur chargement templates';
     return { data: [], error: msg };
   }
 }
+
+/**
+ * Crée un nouveau template de message
+ */
+export async function createCertificationMessageTemplate(
+  templateData: Partial<CertificationMessageTemplate>
+): Promise<{ data: CertificationMessageTemplate | null; error: string | null }> {
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      name: templateData.name,
+      language: templateData.language || 'fr',
+      channel: templateData.channel || 'email',
+      subject: templateData.subject || null,
+      body: templateData.body || '',
+      variables: templateData.variables || [
+        'producer_name',
+        'certificate_number',
+        'certification_type',
+        'certification_body_name',
+        'issued_at',
+        'expires_at',
+        'platform_name',
+        'admin_name',
+        'admin_email'
+      ],
+      is_default: templateData.is_default ?? false,
+      created_by: templateData.created_by || null,
+      created_at: now,
+      updated_at: now
+    };
+
+    const { data, error } = await supabase
+      .from('certification_message_templates')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationMessageTemplate, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur création template';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Met à jour un template de message
+ */
+export async function updateCertificationMessageTemplate(
+  id: string,
+  updates: Partial<CertificationMessageTemplate>
+): Promise<{ data: CertificationMessageTemplate | null; error: string | null }> {
+  try {
+    const payload = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('certification_message_templates')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    return { data: data as CertificationMessageTemplate, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur mise à jour template';
+    return { data: null, error: msg };
+  }
+}
+
+/**
+ * Supprime un template de message
+ */
+export async function deleteCertificationMessageTemplate(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('certification_message_templates')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur suppression template';
+    return { success: false, error: msg };
+  }
+}
+
+// Aliases pour faciliter l'intégration
+export const getMessageTemplates = getCertificationMessageTemplates;
+export const createMessageTemplate = createCertificationMessageTemplate;
+export const updateMessageTemplate = updateCertificationMessageTemplate;
+export const deleteMessageTemplate = deleteCertificationMessageTemplate;
+
+
