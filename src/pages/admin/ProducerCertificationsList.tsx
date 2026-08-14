@@ -18,7 +18,7 @@ import { AdminPageHeader } from '../../components/AdminLayout';
 import CertificationStatusBadge from '../../components/admin/CertificationStatusBadge';
 import ChannelBadge from '../../components/admin/ChannelBadge';
 import OneClickVerificationButton from '../../components/admin/OneClickVerificationButton';
-import { getProducerCertifications } from '../../lib/certificationVerificationService';
+import { getProducerCertifications, resetDemoCertifications } from '../../lib/certificationVerificationService';
 import { useAuth } from '../../lib/auth';
 import type {
   ProducerCertification,
@@ -308,6 +308,18 @@ export default function ProducerCertificationsList() {
           <span className="hidden sm:inline-flex text-xs font-bold px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700">
             {totalCount} certification{totalCount > 1 ? 's' : ''} au total
           </span>
+          <button
+            type="button"
+            onClick={() => {
+              resetDemoCertifications();
+              loadData();
+            }}
+            title="Recharger et réinitialiser les données"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-xs transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+            <span className="hidden md:inline">Actualiser</span>
+          </button>
           <button
             type="button"
             onClick={handleExportCSV}
