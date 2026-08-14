@@ -32,7 +32,6 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducers from './pages/admin/Producers';
 import AdminVerificationsPage from './pages/admin/Verifications';
 import AdminVerificationDetail from './pages/admin/AdminVerificationDetail';
-import AdminCertifications from './pages/admin/Certifications';
 import AdminCertBodies from './pages/admin/AdminCertBodies';
 import AdminProducts from './pages/admin/Products';
 import AdminOrders from './pages/admin/Orders';
@@ -41,6 +40,14 @@ import AdminFinances from './pages/admin/Finances';
 import AdminUsers from './pages/admin/Users';
 import AdminReports from './pages/admin/Reports';
 import ScoreEthiMarket from './pages/ScoreEthiMarket';
+
+// Module mondial de vérification des certifications (Étape 5)
+import CertificationsDashboard from './pages/admin/CertificationsDashboard';
+import ProducerCertificationsList from './pages/admin/ProducerCertificationsList';
+import ProducerCertificationDetail from './pages/admin/ProducerCertificationDetail';
+import AdminCertBodiesDirectory from './pages/admin/AdminCertBodiesDirectory';
+import AdminCertBodyDetail from './pages/admin/AdminCertBodyDetail';
+import AdminMessageTemplates from './pages/admin/AdminMessageTemplates';
 
 export default function App() {
   return (
@@ -91,7 +98,15 @@ export default function App() {
           <Route path="verifications" element={<AdminVerificationsPage />} />
           <Route path="verification/:producerId" element={<AdminVerificationDetail />} />
           <Route path="organismes" element={<AdminCertBodies />} />
-          <Route path="certifications" element={<AdminCertifications />} />
+          
+          {/* Nouvelles routes Certifications & Audit (Étape 5) */}
+          <Route path="certifications" element={<CertificationsDashboard />} />
+          <Route path="certifications/producers" element={<ProducerCertificationsList />} />
+          <Route path="certifications/producers/:id" element={<ProducerCertificationDetail />} />
+          <Route path="certifications/bodies" element={<AdminCertBodiesDirectory />} />
+          <Route path="certifications/bodies/:id" element={<AdminCertBodyDetail />} />
+          <Route path="certifications/templates" element={<AdminMessageTemplates />} />
+
           <Route path="produits" element={<AdminProducts />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="commandes" element={<AdminOrders />} />
