@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, FileText, MapPin, Award, Heart,
-  CheckCircle2, Clock, Upload, Loader2, AlertCircle,
-  ChevronDown, ChevronUp, Trash2, Send,
-  Navigation, X, ShieldAlert, Ban, RefreshCw
+  CheckCircle2, Clock, Loader2, AlertCircle,
+  ChevronDown, ChevronUp, Send,
+  Navigation, ShieldAlert, Ban, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { supabase, type Producer, type ProducerVerification, type VerificationDocument, type VerificationCertification } from '../../lib/supabase';
 import { LeafletMap } from '../../components/LeafletMap';
+import { FileUpload } from '../../components/ui/FileUpload';
+import { MultiFileUpload } from '../../components/ui/MultiFileUpload';
 
 type VerificationStatus = 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'suspended';
 
@@ -38,38 +40,110 @@ export default function Verification() {
     if (!producer) return;
     setLoading(true);
 
-    // 1. Fetch main record
-    const { data } = await supabase
-      .from('producer_verifications')
-      .select('*')
-      .eq('producer_id', producer.id)
-      .maybeSingle();
+    let verifRecord: ProducerVerification | null = null;
 
-    if (data) {
-      setVerification(data as ProducerVerification);
-    } else {
-      const { data: created } = await supabase
+    // 1. Fetch main record safely
+    try {
+      const { data } = await supabase
         .from('producer_verifications')
-        .insert({ producer_id: producer.id })
         .select('*')
+        .eq('producer_id', producer.id)
         .maybeSingle();
-      setVerification(created as ProducerVerification | null);
+
+      if (data) {
+        verifRecord = data as ProducerVerification;
+      } else {
+        const { data: created } = await supabase
+          .from('producer_verifications')
+          .insert({ producer_id: producer.id, status: producer.verification_status || 'draft' })
+          .select('*')
+          .maybeSingle();
+        if (created) verifRecord = created as ProducerVerification;
+      }
+    } catch (e) {
+      console.warn('Supabase producer_verifications query exception:', e);
     }
 
-    // 2. Fetch docs & certs
-    if (producer) {
-      const { data: dData } = await supabase
-        .from('verification_documents')
-        .select('*')
-        .eq('verification_id', data?.id);
-      setDocs((dData as VerificationDocument[]) ?? []);
-
-      const { data: cData } = await supabase
-        .from('verification_certifications')
-        .select('*')
-        .eq('verification_id', data?.id);
-      setCerts((cData as VerificationCertification[]) ?? []);
+    if (!verifRecord) {
+      const savedLocal = localStorage.getItem(`ethimarket_verification_${producer.id}`);
+      if (savedLocal) {
+        try {
+          verifRecord = JSON.parse(savedLocal);
+        } catch (e) {
+          console.warn('Error parsing local verification:', e);
+        }
+      }
+      if (!verifRecord) {
+        verifRecord = {
+          id: `verif-${producer.id}`,
+          producer_id: producer.id,
+          status: (producer.verification_status as VerificationStatus) || 'draft',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      }
     }
+    setVerification(verifRecord);
+    try {
+      localStorage.setItem(`ethimarket_verification_${producer.id}`, JSON.stringify(verifRecord));
+    } catch (e) {
+      console.warn('Error saving local verification:', e);
+    }
+
+    // 2. Fetch docs & certs with local storage fallback
+    let fetchedDocs: VerificationDocument[] = [];
+    if (verifRecord.id && !verifRecord.id.startsWith('verif-')) {
+      try {
+        const { data: dData } = await supabase
+          .from('verification_documents')
+          .select('*')
+          .eq('verification_id', verifRecord.id);
+        if (dData && dData.length > 0) fetchedDocs = dData as VerificationDocument[];
+      } catch (e) {
+        console.warn('Supabase verification_documents query error:', e);
+      }
+    }
+
+    const localDocsRaw = localStorage.getItem(`ethimarket_docs_${producer.id}`);
+    if (localDocsRaw) {
+      try {
+        const localDocs: VerificationDocument[] = JSON.parse(localDocsRaw);
+        const map = new Map<string, VerificationDocument>();
+        fetchedDocs.forEach(d => map.set(d.doc_type + (d.label || ''), d));
+        localDocs.forEach(d => map.set(d.doc_type + (d.label || ''), d));
+        fetchedDocs = Array.from(map.values());
+      } catch (e) {
+        console.warn('Error parsing local docs:', e);
+      }
+    }
+    setDocs(fetchedDocs);
+
+    let fetchedCerts: VerificationCertification[] = [];
+    if (verifRecord.id && !verifRecord.id.startsWith('verif-')) {
+      try {
+        const { data: cData } = await supabase
+          .from('verification_certifications')
+          .select('*')
+          .eq('verification_id', verifRecord.id);
+        if (cData && cData.length > 0) fetchedCerts = cData as VerificationCertification[];
+      } catch (e) {
+        console.warn('Supabase verification_certifications query error:', e);
+      }
+    }
+
+    const localCertsRaw = localStorage.getItem(`ethimarket_certs_${producer.id}`);
+    if (localCertsRaw) {
+      try {
+        const localCerts: VerificationCertification[] = JSON.parse(localCertsRaw);
+        const map = new Map<string, VerificationCertification>();
+        fetchedCerts.forEach(c => map.set(c.cert_type + c.cert_number, c));
+        localCerts.forEach(c => map.set(c.cert_type + c.cert_number, c));
+        fetchedCerts = Array.from(map.values());
+      } catch (e) {
+        console.warn('Error parsing local certs:', e);
+      }
+    }
+    setCerts(fetchedCerts);
 
     setLoading(false);
   }, [producer]);
@@ -92,16 +166,16 @@ export default function Verification() {
   const vStatus = (producer?.verification_status as VerificationStatus) || 'draft';
   const cfg = STATUS_CONFIG[vStatus] || STATUS_CONFIG.draft;
 
-  // Check mandatory requirements
-  const hasIdCard = docs.some(d => d.doc_type === 'id_card');
-  const hasBusinessReg = docs.some(d => d.doc_type === 'business_reg');
-  const hasCompanyStatutes = docs.some(d => d.doc_type === 'company_statutes');
-  const hasFarmPhotos = docs.filter(d => d.doc_type === 'farm_photo').length >= 5;
-  const hasGps = producer?.latitude != null && producer?.longitude != null;
-  const hasEthicalCharter = producer?.ethical_charter_signed === true;
-  const hasNoChildLabor = docs.some(d => d.doc_type === 'no_child_labor');
+  // Check mandatory requirements (cross-checking docs array and producer profile fields)
+  const hasIdCard = docs.some(d => d.doc_type === 'id_card' || d.doc_type === 'identity_recto') || Boolean(producer?.identity_recto_url);
+  const hasBusinessReg = docs.some(d => d.doc_type === 'business_reg' || d.doc_type === 'rccm' || d.doc_type === 'company_statutes') || Boolean(producer?.business_documents?.['rccm'] || producer?.business_documents?.['statuts'] || producer?.business_documents?.['siret']);
+  const hasCertification = certs.length > 0 || docs.some(d => d.doc_type === 'cert_bio' || d.doc_type === 'certification') || (producer?.certifications && producer.certifications.length > 0);
+  const farmPhotoCount = Math.max(docs.filter(d => d.doc_type === 'farm_photo').length, producer?.farm_photos?.length || 0);
+  const hasFarmPhotos = farmPhotoCount >= 5;
+  const hasEthicalCharter = producer?.ethical_charter_signed === true || Boolean(producer?.ethical_charter_url) || Boolean(producer?.business_documents?.['declaration_honneur']) || docs.some(d => d.doc_type === 'no_child_labor' || d.doc_type === 'ethical_charter');
+  const hasGps = (producer?.latitude != null && producer?.longitude != null) || (producer?.gps_lat != null && producer?.gps_lng != null);
 
-  const allMandatoryUploaded = hasIdCard && hasBusinessReg && hasCompanyStatutes && hasFarmPhotos && hasGps && hasEthicalCharter && hasNoChildLabor;
+  const allMandatoryUploaded = hasIdCard && hasBusinessReg && hasCertification && hasFarmPhotos && hasEthicalCharter && hasGps;
 
   // Global submission handler
   const handleFinalSubmission = async () => {
@@ -118,11 +192,12 @@ export default function Verification() {
 
     // 2. Insert notification for admins
     await supabase.from('admin_notifications').insert({
-      type: 'new_producer_submission',
-      title: `Nouveau dossier soumis : ${producer.name}`,
-      message: `Le producteur ${producer.name} (${producer.country}) a soumis son dossier complet pour accréditation.`,
+      type: 'new_submission',
+      title: 'Nouveau dossier à vérifier',
+      message: `${producer.name} a soumis son dossier complet pour vérification.`,
       producer_id: producer.id,
       user_id: user?.id,
+      data: { producer_name: producer.name, country: producer.country },
     });
 
     // 3. Insert history record
@@ -131,7 +206,15 @@ export default function Verification() {
       action: 'SUBMIT_DOSSIER',
       old_status: vStatus,
       new_status: 'submitted',
-      reason: 'Soumission initiale par le producteur',
+      reason: 'Soumission complète du dossier par le producteur',
+      details: {
+        hasIdCard,
+        hasBusinessReg,
+        hasCertification,
+        farmPhotoCount,
+        hasEthicalCharter,
+        hasGps,
+      },
     });
 
     setSubmittingAll(false);
@@ -234,62 +317,62 @@ export default function Verification() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
           {/* Identité */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">1. Pièce d'identité (Recto & Verso)</span>
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ Pièce d'identité recto</span>
             {hasIdCard ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ Téléversé</span>
+              <span className="text-emerald-700 font-bold flex items-center gap-1">Uploadé ✅</span>
             ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ Manquant</span>
+              <span className="text-red-600 font-bold flex items-center gap-1">Manquant ❌</span>
             )}
           </div>
 
-          {/* Entreprise */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">2. Registre du Commerce (RCCM / SIRET)</span>
+          {/* Registre du commerce */}
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ Registre du commerce</span>
             {hasBusinessReg ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ Téléversé</span>
+              <span className="text-emerald-700 font-bold flex items-center gap-1">Uploadé ✅</span>
             ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ Manquant</span>
+              <span className="text-red-600 font-bold flex items-center gap-1">Manquant ❌</span>
             )}
           </div>
 
-          {/* Statuts */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">3. Statuts de l'entreprise</span>
-            {hasCompanyStatutes ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ Téléversé</span>
+          {/* Au moins 1 certification */}
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ Au moins 1 certification</span>
+            {hasCertification ? (
+              <span className="text-emerald-700 font-bold flex items-center gap-1">Uploadé ✅</span>
             ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ Manquant</span>
+              <span className="text-red-600 font-bold flex items-center gap-1">Manquant ❌</span>
             )}
           </div>
 
-          {/* Photos */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">4. Photos de l'exploitation (min 5)</span>
+          {/* Photos exploitation */}
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ Photos exploitation (min 5)</span>
             {hasFarmPhotos ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ {docs.filter(d => d.doc_type === 'farm_photo').length}/5</span>
+              <span className="text-emerald-700 font-bold flex items-center gap-1">{farmPhotoCount}/5 uploadées ✅</span>
             ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ {docs.filter(d => d.doc_type === 'farm_photo').length}/5</span>
+              <span className="text-red-600 font-bold flex items-center gap-1">{farmPhotoCount}/5 uploadées ❌</span>
             )}
           </div>
 
-          {/* GPS */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">5. Coordonnées GPS de l'exploitation</span>
-            {hasGps ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ Renseigné</span>
-            ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ Non Saisi</span>
-            )}
-          </div>
-
-          {/* Éthique */}
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">6. Charte éthique signée & Attestation</span>
+          {/* Charte éthique signée */}
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ Charte éthique signée</span>
             {hasEthicalCharter ? (
-              <span className="text-brand-600 font-bold flex items-center gap-1">✅ Signée</span>
+              <span className="text-emerald-700 font-bold flex items-center gap-1">Signée ✅</span>
             ) : (
-              <span className="text-red-500 font-bold flex items-center gap-1">❌ Non Signée</span>
+              <span className="text-red-600 font-bold flex items-center gap-1">Non ❌</span>
+            )}
+          </div>
+
+          {/* GPS renseigné */}
+          <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+            <span className="font-semibold text-gray-700">☐ GPS renseigné</span>
+            {hasGps ? (
+              <span className="text-emerald-700 font-bold flex items-center gap-1">Oui ✅</span>
+            ) : (
+              <span className="text-red-600 font-bold flex items-center gap-1">Non ❌</span>
             )}
           </div>
         </div>
@@ -338,9 +421,10 @@ export default function Verification() {
           onToggle={() => setOpenSection(openSection === 1 ? null : 1)}
         >
           <Section1Form
-            verification={verification!}
+            verification={verification}
             docs={docs}
             producer={producer!}
+            setDocs={setDocs}
             onRefresh={loadVerification}
           />
         </SectionAccordion>
@@ -353,8 +437,9 @@ export default function Verification() {
           onToggle={() => setOpenSection(openSection === 2 ? null : 2)}
         >
           <Section2Form
-            verification={verification!}
+            verification={verification}
             producer={producer!}
+            setDocs={setDocs}
             onRefresh={loadVerification}
           />
         </SectionAccordion>
@@ -367,8 +452,10 @@ export default function Verification() {
           onToggle={() => setOpenSection(openSection === 3 ? null : 3)}
         >
           <Section3Form
-            verification={verification!}
+            verification={verification}
             certs={certs}
+            producer={producer!}
+            setCerts={setCerts}
             onRefresh={loadVerification}
           />
         </SectionAccordion>
@@ -381,8 +468,9 @@ export default function Verification() {
           onToggle={() => setOpenSection(openSection === 5 ? null : 5)}
         >
           <Section5Form
-            verification={verification!}
+            verification={verification}
             producer={producer!}
+            setDocs={setDocs}
             onRefresh={loadVerification}
           />
         </SectionAccordion>
@@ -426,77 +514,108 @@ function SectionAccordion({
   );
 }
 
-// Helpers
-async function uploadFile(file: File, producerId: string, folder: string): Promise<string | null> {
-  const ext = file.name.split('.').pop();
-  const path = `${producerId}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from('verifications').upload(path, file);
-  if (error) return null;
-  return supabase.storage.from('verifications').getPublicUrl(path).data.publicUrl;
-}
-
-function FileUploadBtn({ onUploaded, label }: { onUploaded: (path: string) => void; label: string }) {
-  const [uploading, setUploading] = useState(false);
-  const { producer } = useAuth();
-
-  const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !producer) return;
-    setUploading(true);
-    const path = await uploadFile(file, producer.id, 'documents');
-    setUploading(false);
-    if (path) onUploaded(path);
-  };
-
-  return (
-    <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-xl cursor-pointer transition-colors shadow-sm">
-      {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-      <span>{uploading ? 'Téléversement...' : label}</span>
-      <input type="file" onChange={handle} className="hidden" />
-    </label>
-  );
-}
-
 // Section 1 Form
-function Section1Form({ verification, docs, producer, onRefresh }: { verification: ProducerVerification; docs: VerificationDocument[]; producer: Producer; onRefresh: () => void }) {
+function Section1Form({
+  verification,
+  docs,
+  producer,
+  setDocs,
+  onRefresh
+}: {
+  verification: ProducerVerification | null;
+  docs: VerificationDocument[];
+  producer: Producer;
+  setDocs: React.Dispatch<React.SetStateAction<VerificationDocument[]>>;
+  onRefresh: () => void;
+}) {
   const addDoc = async (type: string, label: string, filePath: string) => {
-    await supabase.from('verification_documents').insert({
-      verification_id: verification.id, section: 1, doc_type: type, file_path: filePath, label
+    const newDoc: VerificationDocument = {
+      id: `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      verification_id: verification?.id || `verif-${producer.id}`,
+      section: 1,
+      doc_type: type,
+      file_path: filePath,
+      label,
+      uploaded_at: new Date().toISOString()
+    };
+
+    // 1. Immediate optimistic UI state update
+    setDocs(prev => {
+      const filtered = prev.filter(d => d.doc_type !== type);
+      const updated = [...filtered, newDoc];
+      try {
+        localStorage.setItem(`ethimarket_docs_${producer.id}`, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error saving docs to local storage:', e);
+      }
+      return updated;
     });
+
+    // 2. Try Supabase insert
+    if (verification?.id && !verification.id.startsWith('verif-')) {
+      try {
+        await supabase.from('verification_documents').insert({
+          verification_id: verification.id, section: 1, doc_type: type, file_path: filePath, label
+        });
+      } catch (e) {
+        console.warn('Supabase verification_documents insert warning:', e);
+      }
+    }
+
     if (type === 'id_card') {
-      await supabase.from('producers').update({ identity_recto_url: filePath }).eq('id', producer.id);
+      try {
+        await supabase.from('producers').update({ identity_recto_url: filePath }).eq('id', producer.id);
+      } catch (e) {
+        console.warn('Supabase producers update identity_recto_url warning:', e);
+      }
     }
     onRefresh();
   };
 
   const removeDoc = async (id: string) => {
-    await supabase.from('verification_documents').delete().eq('id', id);
+    setDocs(prev => {
+      const updated = prev.filter(d => d.id !== id);
+      try {
+        localStorage.setItem(`ethimarket_docs_${producer.id}`, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error updating local storage:', e);
+      }
+      return updated;
+    });
+
+    try {
+      await supabase.from('verification_documents').delete().eq('id', id);
+    } catch (e) {
+      console.warn('Supabase verification_documents delete warning:', e);
+    }
     onRefresh();
   };
 
   const requiredDocs = [
-    { type: 'id_card', label: 'Pièce d\'identité Recto (CNI / Passeport)' },
-    { type: 'business_reg', label: 'Registre du commerce (RCCM / SIRET)' },
-    { type: 'company_statutes', label: 'Statuts de l\'entreprise' },
+    { type: 'id_card', label: 'Pièce d\'identité Recto (CNI / Passeport / Permis)', bucket: 'identity-documents', folder: 'identity', desc: 'Format PDF ou Image (JPG, PNG). Max 10 MB.' },
+    { type: 'business_reg', label: 'Registre du commerce (RCCM / SIRET / NINEA)', bucket: 'business-documents', folder: 'registry', desc: 'Extrait KBIS ou RCCM officiel en PDF ou Image.' },
+    { type: 'company_statutes', label: 'Statuts de l\'entreprise', bucket: 'business-documents', folder: 'statutes', desc: 'Statuts officiels signés en PDF. Max 10 MB.' },
   ];
 
   return (
-    <div className="space-y-3">
-      {requiredDocs.map(item => {
-        const doc = docs.find(d => d.doc_type === item.type);
+    <div className="space-y-4">
+      {requiredDocs.map((item) => {
+        const doc = docs.find((d) => d.doc_type === item.type);
         return (
-          <div key={item.type} className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-100 rounded-2xl text-xs">
-            <span className="font-bold text-gray-800">{item.label}</span>
-            {doc ? (
-              <div className="flex items-center gap-2">
-                <span className="text-brand-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Fichier reçu</span>
-                <button onClick={() => removeDoc(doc.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <FileUploadBtn label="Téléverser" onUploaded={path => addDoc(item.type, item.label, path)} />
-            )}
+          <div key={item.type} className="p-4 bg-gray-50/80 border border-gray-100 rounded-2xl">
+            <FileUpload
+              bucket={item.bucket}
+              folder={item.folder}
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              maxSizeMB={10}
+              label={item.label}
+              description={item.desc}
+              currentFileUrl={doc?.file_path || (item.type === 'id_card' ? producer.identity_recto_url || undefined : undefined)}
+              onUploadComplete={(url) => addDoc(item.type, item.label, url)}
+              onDelete={() => {
+                if (doc) removeDoc(doc.id);
+              }}
+            />
           </div>
         );
       })}
@@ -505,15 +624,23 @@ function Section1Form({ verification, docs, producer, onRefresh }: { verificatio
 }
 
 // Section 2 Form
-function Section2Form({ verification, producer, onRefresh }: { verification: ProducerVerification; producer: Producer; onRefresh: () => void }) {
+function Section2Form({
+  verification,
+  producer,
+  setDocs,
+  onRefresh
+}: {
+  verification: ProducerVerification | null;
+  producer: Producer;
+  setDocs: React.Dispatch<React.SetStateAction<VerificationDocument[]>>;
+  onRefresh: () => void;
+}) {
   const [address, setAddress] = useState(producer?.address || '');
   const [city, setCity] = useState(producer?.city || '');
   const [lat, setLat] = useState(producer?.latitude?.toString() || '');
   const [lng, setLng] = useState(producer?.longitude?.toString() || '');
   const [photos, setPhotos] = useState<string[]>(producer?.farm_photos || []);
   const [saving, setSaving] = useState(false);
-
-  const photoLabels = ['Entrée exploitation', 'Parcelles cultivées', 'Équipement/matériel', 'Zone de stockage', 'Bureaux/administration'];
 
   const detectLocation = () => {
     if (!navigator.geolocation) return;
@@ -523,34 +650,28 @@ function Section2Form({ verification, producer, onRefresh }: { verification: Pro
     });
   };
 
-  const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const path = await uploadFile(file, producer.id, 'photos');
-    if (path) {
-      const updated = [...photos];
-      updated[index] = path;
-      setPhotos(updated);
-    }
-  };
-
   const saveFarm = async () => {
     setSaving(true);
-    await supabase.from('producers').update({
-      address,
-      city,
-      latitude: parseFloat(lat) || null,
-      longitude: parseFloat(lng) || null,
-      farm_photos: photos,
-    }).eq('id', producer.id);
+    try {
+      await supabase.from('producers').update({
+        address,
+        city,
+        latitude: parseFloat(lat) || null,
+        longitude: parseFloat(lng) || null,
+        farm_photos: photos,
+      }).eq('id', producer.id);
 
-    // Also register documents
-    await supabase.from('verification_documents').insert(
-      photos.map((p, i) => ({
-        verification_id: verification.id, section: 2,
-        doc_type: 'farm_photo', file_path: p, label: photoLabels[i] || 'Photo'
-      }))
-    );
+      if (verification?.id && !verification.id.startsWith('verif-')) {
+        await supabase.from('verification_documents').insert(
+          photos.map((p, i) => ({
+            verification_id: verification.id, section: 2,
+            doc_type: 'farm_photo', file_path: p, label: photoLabels[i] || 'Photo'
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('Supabase saveFarm exception:', e);
+    }
 
     setSaving(false);
     onRefresh();
@@ -595,28 +716,41 @@ function Section2Form({ verification, producer, onRefresh }: { verification: Pro
       )}
 
       <div>
-        <label className="block font-bold text-gray-700 mb-2">Photos de l'exploitation (5 obligatoires) *</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {photoLabels.map((label, i) => (
-            <div key={i}>
-              {photos[i] ? (
-                <div className="relative aspect-square rounded-2xl overflow-hidden border border-gray-200">
-                  <img src={photos[i]} alt={label} className="w-full h-full object-cover" />
-                  <button onClick={() => { const n = [...photos]; n.splice(i, 1); setPhotos(n); }}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/50 text-white rounded-full flex items-center justify-center">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-brand-300 hover:bg-brand-50/20">
-                  <Upload className="w-5 h-5 text-gray-300" />
-                  <span className="text-[10px] text-gray-400 text-center px-1">{label}</span>
-                  <input type="file" accept="image/*" onChange={e => uploadPhoto(e, i)} className="hidden" />
-                </label>
-              )}
-            </div>
-          ))}
-        </div>
+        <MultiFileUpload
+          bucket="farm-photos"
+          folder="farm"
+          accept=".jpg,.jpeg,.png,.webp"
+          maxSizeMB={5}
+          maxFiles={10}
+          minFiles={5}
+          label="Photos de l'exploitation (minimum 5 photos) *"
+          description="Affichez vos parcelles, équipements, entrepôts et zones de conditionnement."
+          currentFiles={photos}
+          onFilesChange={(urls) => {
+            setPhotos(urls);
+            const producerId = producer?.id || 'guest';
+            const updatedDocs: VerificationDocument[] = urls.map((url, idx) => ({
+              id: `photo-${idx}-${Date.now()}`,
+              verification_id: verification?.id || `verif-${producerId}`,
+              section: 2,
+              doc_type: 'farm_photo',
+              file_path: url,
+              label: `Photo exploitation ${idx + 1}`,
+              uploaded_at: new Date().toISOString()
+            }));
+
+            setDocs(prev => {
+              const nonPhotos = prev.filter(d => d.doc_type !== 'farm_photo');
+              const next = [...nonPhotos, ...updatedDocs];
+              try {
+                localStorage.setItem(`ethimarket_docs_${producerId}`, JSON.stringify(next));
+              } catch (err) {
+                console.warn('Error saving photos locally:', err);
+              }
+              return next;
+            });
+          }}
+        />
       </div>
 
       <button onClick={saveFarm} disabled={saving} className="btn-primary w-full py-2.5 text-xs font-bold">
@@ -627,7 +761,19 @@ function Section2Form({ verification, producer, onRefresh }: { verification: Pro
 }
 
 // Section 3 Form
-function Section3Form({ verification, certs, onRefresh }: { verification: ProducerVerification; certs: VerificationCertification[]; onRefresh: () => void }) {
+function Section3Form({
+  verification,
+  certs,
+  producer,
+  setCerts,
+  onRefresh
+}: {
+  verification: ProducerVerification | null;
+  certs: VerificationCertification[];
+  producer: Producer;
+  setCerts: React.Dispatch<React.SetStateAction<VerificationCertification[]>>;
+  onRefresh: () => void;
+}) {
   const [certType, setCertType] = useState('');
   const [certNumber, setCertNumber] = useState('');
   const [body, setBody] = useState('');
@@ -637,15 +783,44 @@ function Section3Form({ verification, certs, onRefresh }: { verification: Produc
   const addCert = async () => {
     if (!certType || !certNumber || !body || !filePath) return;
     setSaving(true);
-    await supabase.from('verification_certifications').insert({
-      verification_id: verification.id,
+
+    const newCert: VerificationCertification = {
+      id: `cert-${Date.now()}`,
+      verification_id: verification?.id || `verif-${producer.id}`,
       cert_type: certType,
       cert_number: certNumber,
       certifying_body: body,
       issued_at: new Date().toISOString().slice(0, 10),
       expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       file_path: filePath,
+    };
+
+    setCerts(prev => {
+      const updated = [...prev, newCert];
+      try {
+        localStorage.setItem(`ethimarket_certs_${producer.id}`, JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Error saving certs locally:', err);
+      }
+      return updated;
     });
+
+    if (verification?.id && !verification.id.startsWith('verif-')) {
+      try {
+        await supabase.from('verification_certifications').insert({
+          verification_id: verification.id,
+          cert_type: certType,
+          cert_number: certNumber,
+          certifying_body: body,
+          issued_at: newCert.issued_at,
+          expires_at: newCert.expires_at,
+          file_path: filePath,
+        });
+      } catch (e) {
+        console.warn('Supabase certification insert exception:', e);
+      }
+    }
+
     setCertType(''); setCertNumber(''); setBody(''); setFilePath('');
     setSaving(false);
     onRefresh();
@@ -673,16 +848,28 @@ function Section3Form({ verification, certs, onRefresh }: { verification: Produc
           <input value={body} onChange={e => setBody(e.target.value)} placeholder="Organisme (Ex: Ecocert)" className={inputClass} />
         </div>
 
-        <div className="flex items-center justify-between">
-          {filePath ? (
-            <span className="text-brand-600 font-bold flex items-center gap-1">✅ PDF Téléversé</span>
-          ) : (
-            <FileUploadBtn label="Téléverser le PDF du certificat" onUploaded={setFilePath} />
-          )}
+        <div className="space-y-3">
+          <FileUpload
+            bucket="certifications"
+            folder="bio"
+            accept=".pdf,.jpg,.jpeg,.png"
+            maxSizeMB={10}
+            label="Document du certificat (PDF / Image)"
+            description="Téléchargez votre attestation officielle (Bio, Fairtrade, GlobalGAP, etc.)"
+            currentFileUrl={filePath}
+            onUploadComplete={(url) => setFilePath(url)}
+            onDelete={() => setFilePath('')}
+          />
 
-          <button onClick={addCert} disabled={saving || !certType || !filePath} className="btn-primary px-4 py-2 text-xs font-bold">
-            Ajouter certification
-          </button>
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={addCert}
+              disabled={saving || !certType || !filePath}
+              className="btn-primary px-5 py-2.5 text-xs font-bold shadow-xs disabled:opacity-50"
+            >
+              {saving ? 'Enregistrement...' : 'Ajouter cette certification'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -690,23 +877,62 @@ function Section3Form({ verification, certs, onRefresh }: { verification: Produc
 }
 
 // Section 5 Form
-function Section5Form({ verification, producer, onRefresh }: { verification: ProducerVerification; producer: Producer; onRefresh: () => void }) {
+function Section5Form({
+  verification,
+  producer,
+  setDocs,
+  onRefresh
+}: {
+  verification: ProducerVerification | null;
+  producer: Producer;
+  setDocs: React.Dispatch<React.SetStateAction<VerificationDocument[]>>;
+  onRefresh: () => void;
+}) {
   const [signed, setSigned] = useState(producer?.ethical_charter_signed || false);
   const [childLaborDoc, setChildLaborDoc] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const handleChildLaborUploaded = (path: string) => {
+    setChildLaborDoc(path);
+    const newDoc: VerificationDocument = {
+      id: `doc-childlabor-${Date.now()}`,
+      verification_id: verification?.id || `verif-${producer.id}`,
+      section: 5,
+      doc_type: 'no_child_labor',
+      file_path: path,
+      label: 'Attestation absence travail des enfants',
+      uploaded_at: new Date().toISOString()
+    };
+
+    setDocs(prev => {
+      const filtered = prev.filter(d => d.doc_type !== 'no_child_labor');
+      const updated = [...filtered, newDoc];
+      try {
+        localStorage.setItem(`ethimarket_docs_${producer.id}`, JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Error saving child labor doc locally:', err);
+      }
+      return updated;
+    });
+    onRefresh();
+  };
+
   const saveEthics = async () => {
     setSaving(true);
-    await supabase.from('producers').update({
-      ethical_charter_signed: signed,
-      ethical_charter_signed_at: signed ? new Date().toISOString() : null,
-    }).eq('id', producer.id);
+    try {
+      await supabase.from('producers').update({
+        ethical_charter_signed: signed,
+        ethical_charter_signed_at: signed ? new Date().toISOString() : null,
+      }).eq('id', producer.id);
 
-    if (childLaborDoc) {
-      await supabase.from('verification_documents').insert({
-        verification_id: verification.id, section: 5,
-        doc_type: 'no_child_labor', file_path: childLaborDoc, label: 'Attestation absence travail des enfants'
-      });
+      if (childLaborDoc && verification?.id && !verification.id.startsWith('verif-')) {
+        await supabase.from('verification_documents').insert({
+          verification_id: verification.id, section: 5,
+          doc_type: 'no_child_labor', file_path: childLaborDoc, label: 'Attestation absence travail des enfants'
+        });
+      }
+    } catch (e) {
+      console.warn('Supabase saveEthics exception:', e);
     }
 
     setSaving(false);
@@ -727,16 +953,24 @@ function Section5Form({ verification, producer, onRefresh }: { verification: Pro
         </label>
       </div>
 
-      <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-between">
-        <div>
-          <p className="font-bold text-gray-900">Attestation d'absence de travail des enfants</p>
-          <p className="text-[11px] text-gray-500">Document officiel attestant du respect des conventions OIT.</p>
-        </div>
-        {childLaborDoc ? (
-          <span className="text-brand-600 font-bold flex items-center gap-1">✅ Téléversé</span>
-        ) : (
-          <FileUploadBtn label="Téléverser" onUploaded={setChildLaborDoc} />
-        )}
+      <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl">
+        <FileUpload
+          bucket="business-documents"
+          folder="ethics"
+          accept=".pdf,.jpg,.jpeg,.png"
+          maxSizeMB={10}
+          label="Attestation d'absence de travail des enfants"
+          description="Document officiel attestant du respect strict des conventions de l'OIT."
+          currentFileUrl={docs.find(d => d.doc_type === 'no_child_labor')?.file_path || childLaborDoc || undefined}
+          onUploadComplete={(url) => handleChildLaborUploaded(url)}
+          onDelete={() => {
+            const doc = docs.find(d => d.doc_type === 'no_child_labor');
+            if (doc) {
+              setDocs(prev => prev.filter(d => d.id !== doc.id));
+            }
+            setChildLaborDoc('');
+          }}
+        />
       </div>
 
       <button onClick={saveEthics} disabled={saving} className="btn-primary w-full py-2.5 text-xs font-bold">

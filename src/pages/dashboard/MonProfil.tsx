@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Save, Loader2, CheckCircle, Upload, MapPin, Plus, Trash2,
+  Save, Loader2, CheckCircle, MapPin, Plus, Trash2,
   Building2, Sprout, Award, Truck, Heart, Image as ImageIcon, X,
   Navigation, Star, FileText, User, AlertCircle, ExternalLink,
   ShieldCheck, FileCheck, Clock,
@@ -16,6 +16,8 @@ import {
   toStringOrNull,
   sanitizeProducerPayload as baseSanitizeProducerPayload,
 } from '../../lib/dbHelpers';
+import { FileUpload } from '../../components/ui/FileUpload';
+import { MultiFileUpload } from '../../components/ui/MultiFileUpload';
 
 /* ─── Constants ─────────────────────────────────────────── */
 
@@ -281,7 +283,6 @@ export default function MonProfil() {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('1');
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -392,161 +393,37 @@ export default function MonProfil() {
   const update = (field: keyof FormState, value: unknown) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
+  const saveField = async (field: string, value: unknown) => {
+    update(field as keyof FormState, value);
+    if (!producer) return;
+    try {
+      const updateData: Record<string, unknown> = {
+        [field]: value,
+        last_updated_at: new Date().toISOString()
+      };
+      if (field === 'avatar_url') {
+        updateData.logo_url = value;
+      }
+      const { error: updateErr } = await supabase
+        .from('producers')
+        .update(updateData)
+        .eq('id', producer.id);
+
+      if (updateErr) {
+        console.error(`Error saving field ${field}:`, updateErr);
+      } else {
+        setLastAutoSave(new Date());
+      }
+    } catch (e) {
+      console.error(`Exception saving field ${field}:`, e);
+    }
+  };
+
   const toggleArray = (field: keyof FormState, value: string) => {
     setForm(prev => {
       const arr = prev[field] as string[];
       return { ...prev, [field]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value] };
     });
-  };
-
-  const uploadAndSaveColumn = async (
-    file: File,
-    folder: string,
-    columnName: string,
-    onSuccess: (url: string) => void
-  ) => {
-    if (!user || !producer) return;
-    if (file.size > 10 * 1024 * 1024) { setError('Fichier trop volumineux (max 10MB).'); return; }
-    setError('');
-    try {
-      const ext = file.name.split('.').pop();
-      const fileName = `${user.id}/${folder}-${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('stores').upload(fileName, file);
-      if (uploadErr) {
-        console.error('Storage upload error:', uploadErr);
-        setError(`Erreur lors de l'upload : ${uploadErr.message}`);
-        return;
-      }
-      const publicUrl = supabase.storage.from('stores').getPublicUrl(fileName).data.publicUrl;
-
-      if (columnName) {
-        const { error: updateErr } = await supabase
-          .from('producers')
-          .update({
-            [columnName]: publicUrl,
-            last_updated_at: new Date().toISOString()
-          })
-          .eq('id', producer.id);
-
-        if (updateErr) {
-          console.error('DB update error:', updateErr);
-          setError(`Erreur mise à jour base de données : ${updateErr.message}`);
-          return;
-        }
-      }
-
-      onSuccess(publicUrl);
-      setLastAutoSave(new Date());
-    } catch (err) {
-      console.error('Upload exception:', err);
-      setError('Erreur inattendue lors de l\'upload du fichier.');
-    }
-  };
-
-  const uploadAndSaveMultiColumn = async (
-    files: File[],
-    folder: string,
-    existingUrls: string[],
-    columnName: string,
-    maxCount: number,
-    onSuccess: (urls: string[]) => void
-  ) => {
-    if (!user || !producer) return;
-    setError('');
-    try {
-      const newUrls = [...existingUrls];
-      for (const file of files.slice(0, maxCount - existingUrls.length)) {
-        if (file.size > 10 * 1024 * 1024) continue;
-        const ext = file.name.split('.').pop();
-        const fileName = `${user.id}/${folder}-${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage.from('stores').upload(fileName, file);
-        if (!uploadErr) {
-          const publicUrl = supabase.storage.from('stores').getPublicUrl(fileName).data.publicUrl;
-          newUrls.push(publicUrl);
-        }
-      }
-
-      if (columnName) {
-        const { error: updateErr } = await supabase
-          .from('producers')
-          .update({
-            [columnName]: newUrls,
-            last_updated_at: new Date().toISOString()
-          })
-          .eq('id', producer.id);
-
-        if (updateErr) {
-          setError(`Erreur mise à jour photos : ${updateErr.message}`);
-          return;
-        }
-      }
-
-      onSuccess(newUrls);
-      setLastAutoSave(new Date());
-    } catch (err) {
-      console.error('Upload multi error:', err);
-      setError('Erreur inattendue lors de l\'upload des photos.');
-    }
-  };
-
-  const uploadAndSaveBizDoc = async (
-    file: File,
-    docKey: string,
-    onSuccess: (newDocs: Record<string, string | null>) => void
-  ) => {
-    if (!user || !producer) return;
-    if (file.size > 10 * 1024 * 1024) { setError('Fichier trop volumineux (max 10MB).'); return; }
-    setError('');
-    try {
-      const ext = file.name.split('.').pop();
-      const fileName = `${user.id}/bizdoc-${docKey}-${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('stores').upload(fileName, file);
-      if (uploadErr) { setError(`Erreur upload : ${uploadErr.message}`); return; }
-      const publicUrl = supabase.storage.from('stores').getPublicUrl(fileName).data.publicUrl;
-      const updatedBizDocs = { ...form.business_documents, [docKey]: publicUrl };
-
-      const { error: updateErr } = await supabase
-        .from('producers')
-        .update({
-          business_documents: updatedBizDocs,
-          last_updated_at: new Date().toISOString()
-        })
-        .eq('id', producer.id);
-
-      if (updateErr) { setError(`Erreur mise à jour document : ${updateErr.message}`); return; }
-
-      onSuccess(updatedBizDocs);
-      setLastAutoSave(new Date());
-    } catch (err) {
-      console.error('Upload biz doc error:', err);
-      setError('Erreur inattendue lors de l\'upload.');
-    }
-  };
-
-  const uploadCertDoc = async (file: File, certIdx: number) => {
-    if (!user || !producer) return;
-    if (file.size > 10 * 1024 * 1024) { setError('PDF trop volumineux (max 10MB).'); return; }
-    setError('');
-    try {
-      const ext = file.name.split('.').pop();
-      const fileName = `${user.id}/cert-${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('stores').upload(fileName, file);
-      if (uploadErr) { setError(`Erreur upload certification : ${uploadErr.message}`); return; }
-      const publicUrl = supabase.storage.from('stores').getPublicUrl(fileName).data.publicUrl;
-      updateCert(certIdx, 'document_url', publicUrl);
-
-      const cert = certs[certIdx];
-      if (cert?.id) {
-        await supabase
-          .from('producer_certifications')
-          .update({ document_url: publicUrl })
-          .eq('id', cert.id);
-      }
-      setLastAutoSave(new Date());
-    } catch (err) {
-      console.error('Upload cert doc error:', err);
-      setError('Erreur inattendue lors de l\'upload.');
-    }
   };
 
   const detectLocation = () => {
@@ -744,18 +621,25 @@ export default function MonProfil() {
         <div className="flex-1 min-w-0 space-y-5">
           {/* SECTION 1 — Informations personnelles */}
           <SectionCard ref={el => { sectionRefs.current['1'] = el; }} data-section-id="1" id="1" title="Informations personnelles" icon={User} saved={savedSection === '1'} complete={sectionComplete('1', form, certs)}>
-            <div>
-              <label className={labelClass}>Photo de profil</label>
-              <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-full border-2 border-dashed border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center flex-shrink-0">
-                  {form.avatar_url ? <img src={form.avatar_url} alt="" className="w-full h-full object-cover" /> : <Upload className="w-6 h-6 text-gray-300" />}
-                </div>
-                <input type="file" accept="image/*" ref={el => { fileRefs.current['avatar'] = el; }} onChange={e => { const file = e.target.files?.[0]; if (file) uploadAndSaveColumn(file, 'avatar', 'logo_url', url => { update('avatar_url', url); update('logo_url', url); }); }} className="hidden" />
-                <button type="button" onClick={() => fileRefs.current['avatar']?.click()} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition-colors">
-                  <Upload className="w-4 h-4 inline mr-1.5" /> Uploader (max 5MB)
-                </button>
-              </div>
-            </div>
+            <FileUpload
+              bucket="profile-photos"
+              folder="avatar"
+              accept=".jpg,.jpeg,.png,.webp"
+              maxSizeMB={5}
+              label="Photo de profil"
+              description="Format JPG, PNG ou WEBP, max 5 MB"
+              currentFileUrl={form.avatar_url}
+              onUploadComplete={(url) => {
+                update('avatar_url', url);
+                update('logo_url', url);
+                saveField('avatar_url', url);
+              }}
+              onDelete={() => {
+                update('avatar_url', '');
+                update('logo_url', '');
+                saveField('avatar_url', null);
+              }}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Prénom <span className="text-red-500">*</span></label>
@@ -833,8 +717,40 @@ export default function MonProfil() {
               <input type="date" value={form.identity_issue_date} onChange={e => update('identity_issue_date', e.target.value)} className={inputClass} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FileUploadField label="Recto (image ou PDF) *" fieldKey="id_recto" currentUrl={form.identity_recto_url} onFileSelect={file => uploadAndSaveColumn(file, 'id-recto', 'identity_recto_url', url => update('identity_recto_url', url))} fileRefs={fileRefs} accept="image/*,.pdf" />
-              <FileUploadField label="Verso (image ou PDF)" fieldKey="id_verso" currentUrl={form.identity_verso_url} onFileSelect={file => uploadAndSaveColumn(file, 'id-verso', 'identity_verso_url', url => update('identity_verso_url', url))} fileRefs={fileRefs} accept="image/*,.pdf" />
+              <FileUpload
+                bucket="identity-documents"
+                folder="identity"
+                accept=".pdf,.jpg,.jpeg,.png"
+                maxSizeMB={10}
+                label="Pièce d'identité (recto) *"
+                description="Format PDF ou image, max 10 MB"
+                currentFileUrl={form.identity_recto_url}
+                onUploadComplete={(url) => {
+                  update('identity_recto_url', url);
+                  saveField('identity_recto_url', url);
+                }}
+                onDelete={() => {
+                  update('identity_recto_url', '');
+                  saveField('identity_recto_url', null);
+                }}
+              />
+              <FileUpload
+                bucket="identity-documents"
+                folder="identity"
+                accept=".pdf,.jpg,.jpeg,.png"
+                maxSizeMB={10}
+                label="Pièce d'identité (verso)"
+                description="Format PDF ou image, max 10 MB"
+                currentFileUrl={form.identity_verso_url}
+                onUploadComplete={(url) => {
+                  update('identity_verso_url', url);
+                  saveField('identity_verso_url', url);
+                }}
+                onDelete={() => {
+                  update('identity_verso_url', '');
+                  saveField('identity_verso_url', null);
+                }}
+              />
             </div>
             <div className="flex items-center gap-2">
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${producer.identity_verified ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -1054,15 +970,37 @@ export default function MonProfil() {
                       <label className="text-xs font-semibold text-gray-600 mb-1 block">Date d'expiration <span className="text-red-500">*</span></label>
                       <input type="date" value={cert.expiry_date} onChange={e => updateCert(idx, 'expiry_date', e.target.value)} className={inputClass} />
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 mb-1 block">Document PDF <span className="text-red-500">*</span></label>
-                      <input type="file" accept=".pdf" onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) uploadCertDoc(file, idx);
-                      }} className="text-xs" />
-                    </div>
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-4">
+                    <FileUpload
+                      bucket="certifications"
+                      folder="bio"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      maxSizeMB={10}
+                      label="Document justificatif / Certificat officiel *"
+                      description="Format PDF ou image scannée, max 10 MB"
+                      currentFileUrl={cert.document_url || undefined}
+                      onUploadComplete={async (url) => {
+                        updateCert(idx, 'document_url', url);
+                        if (cert.id) {
+                          await supabase
+                            .from('producer_certifications')
+                            .update({ document_url: url })
+                            .eq('id', cert.id);
+                        }
+                      }}
+                      onDelete={async () => {
+                        updateCert(idx, 'document_url', '');
+                        if (cert.id) {
+                          await supabase
+                            .from('producer_certifications')
+                            .update({ document_url: null })
+                            .eq('id', cert.id);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="mt-3">
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
                       {cert.status === 'approved' ? '✓ Vérifiée' : cert.status === 'rejected' ? '✗ Rejetée' : '🟡 En attente'}
                     </span>
@@ -1078,41 +1016,92 @@ export default function MonProfil() {
 
           {/* SECTION 7 — Justificatifs */}
           <SectionCard ref={el => { sectionRefs.current['7'] = el; }} data-section-id="7" id="7" title="Justificatifs et documents" icon={FileCheck} saved={savedSection === '7'} complete={sectionComplete('7', form, certs)}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {BUSINESS_DOC_KEYS.map(doc => (
-                <FileUploadField key={doc.key} label={`${doc.label} ${doc.required ? '*' : ''}`} fieldKey={`biz_${doc.key}`} currentUrl={form.business_documents[doc.key] ?? null}
-                  onFileSelect={file => uploadAndSaveBizDoc(file, doc.key, newDocs => update('business_documents', newDocs))}
-                  fileRefs={fileRefs} accept=".pdf" />
+                <FileUpload
+                  key={doc.key}
+                  bucket="business-documents"
+                  folder="statuts"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  maxSizeMB={10}
+                  label={`${doc.label} ${doc.required ? '*' : ''}`}
+                  description="Format PDF ou image, max 10 MB"
+                  currentFileUrl={form.business_documents[doc.key] ?? undefined}
+                  onUploadComplete={async (url) => {
+                    const updatedBizDocs = { ...form.business_documents, [doc.key]: url };
+                    update('business_documents', updatedBizDocs);
+                    if (producer) {
+                      await supabase
+                        .from('producers')
+                        .update({ business_documents: updatedBizDocs, last_updated_at: new Date().toISOString() })
+                        .eq('id', producer.id);
+                    }
+                  }}
+                  onDelete={async () => {
+                    const updatedBizDocs = { ...form.business_documents, [doc.key]: null };
+                    update('business_documents', updatedBizDocs);
+                    if (producer) {
+                      await supabase
+                        .from('producers')
+                        .update({ business_documents: updatedBizDocs, last_updated_at: new Date().toISOString() })
+                        .eq('id', producer.id);
+                    }
+                  }}
+                />
               ))}
             </div>
-            <FileUploadField label="Analyses laboratoire des produits (PDF)" fieldKey="lab_analysis" currentUrl={form.lab_analysis_url}
-              onFileSelect={file => uploadAndSaveColumn(file, 'lab-analysis', 'lab_analysis_url', url => update('lab_analysis_url', url))} fileRefs={fileRefs} accept=".pdf" />
-            <FileUploadField label="Attestation d'absence de travail des enfants (PDF) *" fieldKey="ethical_charter_doc" currentUrl={form.ethical_charter_url ?? null}
-              onFileSelect={file => uploadAndSaveColumn(file, 'ethical-charter', 'ethical_charter_url', url => update('ethical_charter_url', url))} fileRefs={fileRefs} accept=".pdf" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FileUpload
+                bucket="lab-analyses"
+                folder="lab"
+                accept=".pdf,.jpg,.jpeg,.png"
+                maxSizeMB={10}
+                label="Analyses laboratoire des produits (PDF)"
+                description="Rapports d'analyse qualité, traçabilité et pureté"
+                currentFileUrl={form.lab_analysis_url}
+                onUploadComplete={(url) => {
+                  update('lab_analysis_url', url);
+                  saveField('lab_analysis_url', url);
+                }}
+                onDelete={() => {
+                  update('lab_analysis_url', '');
+                  saveField('lab_analysis_url', null);
+                }}
+              />
+              <FileUpload
+                bucket="business-documents"
+                folder="ethics"
+                accept=".pdf,.jpg,.jpeg,.png"
+                maxSizeMB={10}
+                label="Attestation d'absence de travail des enfants *"
+                description="Charte signée ou attestation officielle d'engagement"
+                currentFileUrl={form.ethical_charter_url}
+                onUploadComplete={(url) => {
+                  update('ethical_charter_url', url);
+                  saveField('ethical_charter_url', url);
+                }}
+                onDelete={() => {
+                  update('ethical_charter_url', '');
+                  saveField('ethical_charter_url', null);
+                }}
+              />
+            </div>
             <div>
-              <label className={labelClass}>Photos de l'exploitation (min 5) <span className="text-red-500">*</span></label>
-              <div className="grid grid-cols-5 gap-2">
-                {form.farm_photos.map((url, i) => (
-                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    <button type="button" onClick={() => update('farm_photos', form.farm_photos.filter((_, idx) => idx !== i))}
-                      className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-                {form.farm_photos.length < 10 && (
-                  <button type="button" onClick={() => fileRefs.current['farm']?.click()}
-                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors">
-                    <Plus className="w-6 h-6" />
-                  </button>
-                )}
-                <input type="file" accept="image/*" multiple ref={el => { fileRefs.current['farm'] = el; }}
-                  onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length) uploadAndSaveMultiColumn(files, 'farm', form.farm_photos, 'farm_photos', 10, urls => update('farm_photos', urls));
-                  }} className="hidden" />
-              </div>
+              <MultiFileUpload
+                bucket="farm-photos"
+                folder="farm"
+                accept=".jpg,.jpeg,.png,.webp"
+                maxSizeMB={5}
+                maxFiles={10}
+                minFiles={5}
+                label="Photos de l'exploitation (min 5) *"
+                description="Minimum 5 photos requises. Vue générale, cultures, installations, équipe..."
+                currentFiles={form.farm_photos || []}
+                onFilesChange={(urls) => {
+                  update('farm_photos', urls);
+                  saveField('farm_photos', urls);
+                }}
+              />
             </div>
             <SaveButton onClick={() => saveSection('7', { business_documents: form.business_documents, lab_analysis_url: form.lab_analysis_url || null, ethical_charter_url: form.ethical_charter_url || null, farm_photos: form.farm_photos })} saving={saving === '7'} />
           </SectionCard>
@@ -1275,65 +1264,72 @@ export default function MonProfil() {
           {/* SECTION 10 — Médias */}
           <SectionCard ref={el => { sectionRefs.current['10'] = el; }} data-section-id="10" id="10" title="Médias (photos/vidéos)" icon={ImageIcon} saved={savedSection === '10'} complete={sectionComplete('10', form, certs)}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FileUploadField label="Logo de l'organisation *" fieldKey="logo" currentUrl={form.logo_url} onFileSelect={file => uploadAndSaveColumn(file, 'logo', 'logo_url', url => update('logo_url', url))} fileRefs={fileRefs} accept="image/*" isImage />
-              <div>
-                <label className={labelClass}>Bannière de profil * <span className="text-gray-400 font-normal">(1920x600 recommandé)</span></label>
-                <div className="relative h-32 rounded-2xl border-2 border-dashed border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center">
-                  {form.banner_url ? <img src={form.banner_url} alt="" className="w-full h-full object-cover" /> : <Upload className="w-7 h-7 text-gray-300" />}
-                  <input type="file" accept="image/*" ref={el => { fileRefs.current['banner'] = el; }} onChange={e => { const file = e.target.files?.[0]; if (file) uploadAndSaveColumn(file, 'banner', 'banner_url', url => update('banner_url', url)); }} className="hidden" />
-                  <button type="button" onClick={() => fileRefs.current['banner']?.click()} className="absolute bottom-3 right-3 px-3 py-1.5 bg-white/90 text-gray-700 text-xs font-bold rounded-lg">Uploader</button>
-                </div>
-              </div>
+              <FileUpload
+                bucket="organization-logos"
+                folder="logo"
+                accept=".jpg,.jpeg,.png,.webp,.svg"
+                maxSizeMB={5}
+                label="Logo de l'organisation *"
+                description="Format image carré recommandé (PNG, JPG)"
+                currentFileUrl={form.logo_url}
+                onUploadComplete={(url) => {
+                  update('logo_url', url);
+                  saveField('logo_url', url);
+                }}
+                onDelete={() => {
+                  update('logo_url', '');
+                  saveField('logo_url', null);
+                }}
+              />
+              <FileUpload
+                bucket="farm-photos"
+                folder="banner"
+                accept=".jpg,.jpeg,.png,.webp"
+                maxSizeMB={5}
+                label="Bannière de profil *"
+                description="Format 1920x600 recommandé"
+                currentFileUrl={form.banner_url}
+                onUploadComplete={(url) => {
+                  update('banner_url', url);
+                  saveField('banner_url', url);
+                }}
+                onDelete={() => {
+                  update('banner_url', '');
+                  saveField('banner_url', null);
+                }}
+              />
             </div>
             <div>
-              <label className={labelClass}>Photos de l'équipe (max 5)</label>
-              <div className="grid grid-cols-5 gap-2">
-                {form.team_photos.map((url, i) => (
-                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    <button type="button" onClick={() => update('team_photos', form.team_photos.filter((_, idx) => idx !== i))}
-                      className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-                {form.team_photos.length < 5 && (
-                  <button type="button" onClick={() => fileRefs.current['team']?.click()}
-                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors">
-                    <Plus className="w-6 h-6" />
-                  </button>
-                )}
-                <input type="file" accept="image/*" multiple ref={el => { fileRefs.current['team'] = el; }}
-                  onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length) uploadAndSaveMultiColumn(files, 'team', form.team_photos, 'team_photos', 5, urls => update('team_photos', urls));
-                  }} className="hidden" />
-              </div>
+              <MultiFileUpload
+                bucket="farm-photos"
+                folder="team"
+                accept=".jpg,.jpeg,.png,.webp"
+                maxSizeMB={5}
+                maxFiles={5}
+                label="Photos de l'équipe (max 5)"
+                description="Mettez en avant vos collaborateurs, récoltants et partenaires"
+                currentFiles={form.team_photos || []}
+                onFilesChange={(urls) => {
+                  update('team_photos', urls);
+                  saveField('team_photos', urls);
+                }}
+              />
             </div>
             <div>
-              <label className={labelClass}>Photos des produits (max 10)</label>
-              <div className="grid grid-cols-5 gap-2">
-                {form.product_photos.map((url, i) => (
-                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    <button type="button" onClick={() => update('product_photos', form.product_photos.filter((_, idx) => idx !== i))}
-                      className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-                {form.product_photos.length < 10 && (
-                  <button type="button" onClick={() => fileRefs.current['products']?.click()}
-                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors">
-                    <Plus className="w-6 h-6" />
-                  </button>
-                )}
-                <input type="file" accept="image/*" multiple ref={el => { fileRefs.current['products'] = el; }}
-                  onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length) uploadAndSaveMultiColumn(files, 'products', form.product_photos, 'product_photos', 10, urls => update('product_photos', urls));
-                  }} className="hidden" />
-              </div>
+              <MultiFileUpload
+                bucket="product-photos"
+                folder="products"
+                accept=".jpg,.jpeg,.png,.webp"
+                maxSizeMB={5}
+                maxFiles={10}
+                label="Photos des produits (max 10)"
+                description="Présentation de vos récoltes et produits finis"
+                currentFiles={form.product_photos || []}
+                onFilesChange={(urls) => {
+                  update('product_photos', urls);
+                  saveField('product_photos', urls);
+                }}
+              />
             </div>
             <div>
               <label className={labelClass}>Vidéo de présentation <span className="text-gray-400 font-normal">(optionnel)</span></label>
@@ -1396,34 +1392,5 @@ function SaveButton({ onClick, saving }: { onClick: () => void; saving: boolean 
       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
       {saving ? 'Enregistrement...' : 'Enregistrer cette section'}
     </button>
-  );
-}
-
-function FileUploadField({ label, fieldKey, currentUrl, onFileSelect, fileRefs, accept, isImage }: {
-  label: string;
-  fieldKey: string;
-  currentUrl: string | null;
-  onFileSelect: (file: File) => void;
-  fileRefs: React.MutableRefObject<Record<string, HTMLInputElement | null>>;
-  accept: string;
-  isImage?: boolean;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-semibold text-gray-700 mb-1.5">{label}</label>
-      <div className="flex items-center gap-3">
-        <div className="flex-shrink-0 w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center">
-          {currentUrl ? (isImage || currentUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? <img src={currentUrl} alt="" className="w-full h-full object-cover" /> : <FileText className="w-6 h-6 text-gray-400" />) : <Upload className="w-5 h-5 text-gray-300" />}
-        </div>
-        <input type="file" accept={accept} ref={el => { fileRefs.current[fieldKey] = el; }}
-          onChange={e => {
-            const file = e.target.files?.[0];
-            if (file) onFileSelect(file);
-          }} className="hidden" />
-        <button type="button" onClick={() => fileRefs.current[fieldKey]?.click()} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition-colors">
-          <Upload className="w-4 h-4 inline mr-1.5" /> {currentUrl ? 'Changer' : 'Uploader'}
-        </button>
-      </div>
-    </div>
   );
 }

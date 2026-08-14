@@ -24,7 +24,7 @@ export function DocumentViewer({
   const [localComment, setLocalComment] = useState(comment);
   const [showCommentBox, setShowCommentBox] = useState(false);
 
-  const isImage = url ? (url.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) || docType === 'image') : false;
+  const isImage = url ? (url.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) || url.startsWith('data:image/') || docType === 'image') : false;
 
   const handleStatus = (newStatus: 'valid' | 'invalid') => {
     if (onStatusChange) {

@@ -38,52 +38,147 @@ export default function Dashboard() {
         <p className="text-gray-500 text-sm mt-0.5 capitalize">{today}</p>
       </div>
 
-      {/* Verification Warning Banner for unapproved producers */}
-      {producer && producer.verification_status !== 'approved' && (
-        <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-6 mb-6 shadow-sm">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-amber-200 text-amber-900 font-black text-xs rounded-full uppercase tracking-wider">
-                  ⚠️ Boutique non publiée
-                </span>
-                <span className="text-xs font-bold text-amber-800">
-                  Accréditation Bureau Veritas requise
-                </span>
-              </div>
-              <h2 className="text-lg font-black text-gray-900">
-                Votre boutique n'est pas encore visible publiquement sur le catalogue.
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-semibold text-gray-700 pt-1">
-                <div className="flex items-center gap-1.5">
-                  <span className={producer.profile_completion && producer.profile_completion >= 80 ? 'text-brand-600' : 'text-gray-400'}>
-                    {producer.profile_completion && producer.profile_completion >= 80 ? '✅' : '1. ⬜'}
-                  </span>
-                  <span>Compléter votre profil</span>
+      {/* Verification Status Banner */}
+      {producer && (
+        <>
+          {producer.verification_status === 'draft' && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-6 mb-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-amber-200 text-amber-900 font-black text-xs rounded-full uppercase tracking-wider">
+                      ⚠️ Boutique non publiée
+                    </span>
+                    <span className="text-xs font-bold text-amber-800">
+                      Vérification requise
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-gray-900">
+                    Votre boutique n'est pas encore en ligne.
+                  </h2>
+                  <p className="text-sm text-gray-700">
+                    Complétez votre profil et soumettez votre dossier pour validation par notre équipe Bureau Veritas.
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={producer.identity_recto_url ? 'text-brand-600' : 'text-gray-400'}>
-                    {producer.identity_recto_url ? '✅' : '2. ⬜'}
-                  </span>
-                  <span>Uploader vos documents</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={producer.verification_status === 'submitted' ? 'text-brand-600' : 'text-gray-400'}>
-                    {producer.verification_status === 'submitted' ? '✅' : '3. ⬜'}
-                  </span>
-                  <span>Soumettre pour validation</span>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    to="/dashboard/mon-profil"
+                    className="px-5 py-2.5 bg-white text-gray-900 hover:bg-gray-100 text-xs font-bold rounded-xl border border-gray-200 transition-colors shadow-sm"
+                  >
+                    Compléter mon profil →
+                  </Link>
+                  <Link
+                    to="/dashboard/verification"
+                    className="btn-primary px-5 py-2.5 text-xs font-bold whitespace-nowrap bg-amber-600 hover:bg-amber-700 text-white shadow"
+                  >
+                    Soumettre mon dossier →
+                  </Link>
                 </div>
               </div>
             </div>
+          )}
 
-            <Link
-              to="/dashboard/verification"
-              className="btn-primary px-5 py-3 text-xs font-bold whitespace-nowrap flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow"
-            >
-              Voir mon statut de vérification →
-            </Link>
-          </div>
-        </div>
+          {producer.verification_status === 'submitted' && (
+            <div className="bg-amber-50/90 border-2 border-amber-300 rounded-3xl p-6 mb-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-amber-200 text-amber-900 font-black text-xs rounded-full uppercase tracking-wider">
+                      🟡 Dossier soumis
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-gray-900">
+                    Dossier soumis ! Notre équipe le vérifie sous 48h.
+                  </h2>
+                  <p className="text-sm text-gray-700">
+                    Votre demande d'accréditation est enregistrée. Vous recevrez une alerte dès la mise en ligne de votre boutique.
+                  </p>
+                </div>
+
+                <Link
+                  to="/dashboard/verification"
+                  className="btn-primary px-5 py-2.5 text-xs font-bold whitespace-nowrap bg-amber-600 hover:bg-amber-700 text-white shadow"
+                >
+                  Suivre mon statut →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {producer.verification_status === 'under_review' && (
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-3xl p-6 mb-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-blue-200 text-blue-900 font-black text-xs rounded-full uppercase tracking-wider">
+                      🔵 En cours d'examen
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-gray-900">
+                    Votre dossier est en cours d'examen par notre équipe.
+                  </h2>
+                  <p className="text-sm text-gray-700">
+                    L'auditeur Bureau Veritas analyse vos pièces justificatives et vos certifications.
+                  </p>
+                </div>
+
+                <Link
+                  to="/dashboard/verification"
+                  className="btn-primary px-5 py-2.5 text-xs font-bold whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white shadow"
+                >
+                  Voir les détails →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {producer.verification_status === 'rejected' && (
+            <div className="bg-red-50 border-2 border-red-300 rounded-3xl p-6 mb-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-red-200 text-red-900 font-black text-xs rounded-full uppercase tracking-wider">
+                      ❌ Dossier rejeté
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-gray-900">
+                    Dossier rejeté. Motif : <span className="font-bold text-red-700">{producer.rejection_reason || 'Documents incomplets ou illisibles'}</span>
+                  </h2>
+                  <p className="text-sm text-gray-700">
+                    Veuillez corriger les éléments manquants ou non conformes pour que nous puissions réexaminer votre boutique.
+                  </p>
+                </div>
+
+                <Link
+                  to="/dashboard/verification"
+                  className="btn-primary px-5 py-2.5 text-xs font-bold whitespace-nowrap bg-red-600 hover:bg-red-700 text-white shadow"
+                >
+                  Corriger et resoumettre →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {producer.verification_status === 'approved' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-4 mb-6 shadow-xs flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✅</span>
+                <div>
+                  <p className="font-black text-gray-900 text-sm">Votre boutique est en ligne !</p>
+                  <p className="text-xs text-emerald-800">Accrédité Bureau Veritas — Vos produits sont visibles publiquement sur le catalogue.</p>
+                </div>
+              </div>
+              <Link
+                to={`/boutique/${producer.id}`}
+                target="_blank"
+                className="px-4 py-2 bg-white text-emerald-700 border border-emerald-300 font-bold text-xs rounded-xl hover:bg-emerald-100 transition-colors"
+              >
+                Voir ma boutique publique ↗
+              </Link>
+            </div>
+          )}
+        </>
       )}
 
       {/* Welcome banner for new producers */}

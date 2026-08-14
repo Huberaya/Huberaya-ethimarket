@@ -442,3 +442,343 @@ export type ChatMessage = {
   created_at: string;
 };
 
+export type CertificationBody = {
+  id: string;
+  name: string;
+  acronym: string | null;
+  country: string;
+  region: CertificationRegion;
+  sub_region: string | null;
+  website: string | null;
+  verification_url: string | null;
+  api_endpoint: string | null;
+  api_key_required: boolean;
+  api_key_encrypted: string | null;
+  email_contact: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  contact_form_url: string | null;
+  languages: string[];
+  certification_types: CertificationType[];
+  trust_level: TrustLevel;
+  is_active: boolean;
+  internal_notes: string | null;
+  last_updated_at: string;
+  created_at: string;
+  // Relations optionnelles
+  contacts?: CertificationBodyContact[];
+  standards?: CertificationStandard[];
+  // Rétrocompatibilité d'affichage
+  short_name?: string;
+  logo_url?: string | null;
+  verification_instructions?: string | null;
+  description?: string | null;
+  headquarters_country?: string | null;
+  coverage?: string[] | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+};
+
+// ==============================================================================
+// MODULE MONDIAL DE VÉRIFICATION DES CERTIFICATIONS (ÉTAPE 3)
+// ==============================================================================
+
+export type CertificationRegion =
+  | 'Africa'
+  | 'Asia'
+  | 'Latin America'
+  | 'Europe'
+  | 'North America'
+  | 'Oceania'
+  | 'Middle East';
+
+export type CertificationType =
+  | 'organic'
+  | 'fair_trade'
+  | 'ethical'
+  | 'sustainable'
+  | 'other';
+
+export type TrustLevel =
+  | 'verified'
+  | 'unverified'
+  | 'pending';
+
+export type VerificationChannel =
+  | 'api'
+  | 'email'
+  | 'form'
+  | 'phone'
+  | 'whatsapp'
+  | 'manual';
+
+export type ProducerCertificationStatus =
+  | 'unverified'
+  | 'pending'
+  | 'contact_sent'
+  | 'verified'
+  | 'rejected'
+  | 'expired'
+  | 'manual_required';
+
+export type VerificationRequestStatus =
+  | 'sent'
+  | 'pending'
+  | 'success'
+  | 'failed'
+  | 'no_response';
+
+export type CertificationBodyContact = {
+  id: string;
+  certification_body_id: string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  language: string | null;
+  is_primary: boolean;
+  notes: string | null;
+  created_at: string;
+};
+
+export type CertificationStandard = {
+  id: string;
+  certification_body_id: string;
+  name: string;
+  code: string | null;
+  type: CertificationType | null;
+  description: string | null;
+  scope: string | null;
+  geographic_coverage: string | null;
+  created_at: string;
+};
+
+export type ProducerCertification = {
+  id: string;
+  producer_id: string;
+  certification_body_id: string | null;
+  certification_standard_id: string | null;
+  certificate_number: string | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  document_path: string | null;
+  country_of_issue: string | null;
+  status: ProducerCertificationStatus;
+  admin_notes: string | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Relations optionnelles
+  certification_body?: CertificationBody | null;
+  certification_standard?: CertificationStandard | null;
+  producer?: Pick<Producer, 'id' | 'name' | 'country'> | null;
+  verified_by_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
+  verification_requests?: CertificationVerificationRequest[];
+  logs?: CertificationVerificationLog[];
+  // Champs calculés UI
+  is_expired?: boolean;
+  expires_soon?: boolean;
+};
+
+export type CertificationVerificationRequest = {
+  id: string;
+  producer_certification_id: string;
+  certification_body_id: string | null;
+  triggered_by: string;
+  channel: VerificationChannel;
+  status: VerificationRequestStatus;
+  message_sent: string | null;
+  response_received: string | null;
+  sent_at: string;
+  responded_at: string | null;
+  created_at: string;
+  // Relations optionnelles
+  triggered_by_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
+  certification_body?: CertificationBody | null;
+};
+
+export type CertificationVerificationLog = {
+  id: string;
+  producer_certification_id: string;
+  admin_id: string;
+  action: string;
+  previous_status: ProducerCertificationStatus | null;
+  new_status: ProducerCertificationStatus | null;
+  channel_used: VerificationChannel | null;
+  details: Record<string, unknown>;
+  ip_address: string | null;
+  created_at: string;
+  // Relations optionnelles
+  admin_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
+};
+
+export type CertificationMessageTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  channel: VerificationChannel;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  is_default: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// ==============================================================================
+// TYPES UTILITAIRES CRUD & SERVICES (FORMULAIRES & FILTRES)
+// ==============================================================================
+
+export type CertificationBodyInsert = Omit<CertificationBody, 'id' | 'created_at' | 'last_updated_at' | 'contacts' | 'standards' | 'short_name' | 'logo_url' | 'verification_instructions' | 'description' | 'headquarters_country' | 'coverage' | 'contact_email' | 'contact_phone'>;
+export type CertificationBodyUpdate = Partial<CertificationBodyInsert>;
+
+export type ProducerCertificationInsert = {
+  producer_id: string;
+  certification_body_id?: string | null;
+  certification_standard_id?: string | null;
+  certificate_number?: string | null;
+  issued_at?: string | null;
+  expires_at?: string | null;
+  document_path?: string | null;
+  country_of_issue?: string | null;
+  status?: ProducerCertificationStatus;
+  admin_notes?: string | null;
+};
+
+export type ProducerCertificationUpdate = Partial<ProducerCertificationInsert> & {
+  status?: ProducerCertificationStatus;
+  admin_notes?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+};
+
+export type CertificationMessageTemplateInsert = Omit<CertificationMessageTemplate, 'id' | 'created_at' | 'updated_at'>;
+export type CertificationMessageTemplateUpdate = Partial<CertificationMessageTemplateInsert>;
+
+export type VerificationResult = {
+  success: boolean;
+  channel: VerificationChannel;
+  message?: string;
+  error?: string;
+  request_id?: string;
+  status?: ProducerCertificationStatus;
+  external_url?: string;
+};
+
+export type CertificationDashboardStats = {
+  total: number;
+  unverified: number;
+  pending: number;
+  contact_sent: number;
+  verified: number;
+  rejected: number;
+  expired: number;
+  manual_required: number;
+  expiring_soon: number;
+  by_region: Record<CertificationRegion, number>;
+};
+
+export type CertificationBodyFilters = {
+  search?: string;
+  region?: CertificationRegion | 'ALL';
+  country?: string;
+  certification_type?: CertificationType | 'ALL';
+  trust_level?: TrustLevel | 'ALL';
+  is_active?: boolean;
+  has_api?: boolean;
+  has_email?: boolean;
+};
+
+export type ProducerCertificationFilters = {
+  search?: string;
+  status?: ProducerCertificationStatus | 'ALL';
+  region?: CertificationRegion | 'ALL';
+  country?: string;
+  certification_type?: CertificationType | 'ALL';
+  expires_before?: string;
+  expires_after?: string;
+  certification_body_id?: string;
+};
+
+export type TemplateVariables = {
+  producer_name: string;
+  certificate_number: string;
+  certification_type: string;
+  certification_body_name: string;
+  issued_at: string;
+  expires_at: string;
+  document_url?: string;
+  platform_name: string;
+  admin_name: string;
+  admin_email: string;
+};
+
+// ==============================================================================
+// CONSTANTES GLOBALES UI & MÉTIER
+// ==============================================================================
+
+export const DAYS_BEFORE_EXPIRY_ALERT = 30;
+
+export const CERTIFICATION_REGIONS: { value: CertificationRegion; labelFr: string; labelEn: string }[] = [
+  { value: 'Africa', labelFr: 'Afrique', labelEn: 'Africa' },
+  { value: 'Asia', labelFr: 'Asie', labelEn: 'Asia' },
+  { value: 'Latin America', labelFr: 'Amérique Latine', labelEn: 'Latin America' },
+  { value: 'Europe', labelFr: 'Europe', labelEn: 'Europe' },
+  { value: 'North America', labelFr: 'Amérique du Nord', labelEn: 'North America' },
+  { value: 'Oceania', labelFr: 'Océanie', labelEn: 'Oceania' },
+  { value: 'Middle East', labelFr: 'Moyen-Orient', labelEn: 'Middle East' }
+];
+
+export const CERTIFICATION_TYPES: { value: CertificationType; labelFr: string; labelEn: string; icon: string }[] = [
+  { value: 'organic', labelFr: 'Agriculture Biologique (Bio)', labelEn: 'Organic', icon: 'Leaf' },
+  { value: 'fair_trade', labelFr: 'Commerce Équitable', labelEn: 'Fair Trade', icon: 'Scale' },
+  { value: 'ethical', labelFr: 'Éthique & Social', labelEn: 'Ethical & Social', icon: 'HeartHandshake' },
+  { value: 'sustainable', labelFr: 'Durable & Environnement', labelEn: 'Sustainable & Environment', icon: 'Globe' },
+  { value: 'other', labelFr: 'Autre certification', labelEn: 'Other', icon: 'Award' }
+];
+
+export const VERIFICATION_CHANNELS: { 
+  value: VerificationChannel; 
+  labelFr: string; 
+  labelEn: string; 
+  iconName: string; 
+  badgeColor: string 
+}[] = [
+  { value: 'api', labelFr: 'API Automatique', labelEn: 'Automated API', iconName: 'Cpu', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'email', labelFr: 'Email direct', labelEn: 'Direct Email', iconName: 'Mail', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'form', labelFr: 'Portail Web', labelEn: 'Web Portal', iconName: 'Globe', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'whatsapp', labelFr: 'WhatsApp', labelEn: 'WhatsApp', iconName: 'MessageSquare', badgeColor: 'bg-green-50 text-green-700 border-green-200' },
+  { value: 'phone', labelFr: 'Téléphone', labelEn: 'Phone Call', iconName: 'Phone', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'manual', labelFr: 'Contact Manuel', labelEn: 'Manual Contact', iconName: 'UserCheck', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' }
+];
+
+export const PRODUCER_CERTIFICATION_STATUSES: {
+  value: ProducerCertificationStatus;
+  labelFr: string;
+  labelEn: string;
+  badgeColor: string;
+  iconName: string;
+}[] = [
+  { value: 'unverified', labelFr: 'Non vérifié', labelEn: 'Unverified', badgeColor: 'bg-gray-100 text-gray-700 border-gray-300', iconName: 'HelpCircle' },
+  { value: 'pending', labelFr: 'En attente', labelEn: 'Pending', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200', iconName: 'Clock' },
+  { value: 'contact_sent', labelFr: 'Demande envoyée', labelEn: 'Contact Sent', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200', iconName: 'Send' },
+  { value: 'verified', labelFr: 'Vérifié & Conforme', labelEn: 'Verified', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200', iconName: 'CheckCircle2' },
+  { value: 'rejected', labelFr: 'Rejeté / Invalide', labelEn: 'Rejected', badgeColor: 'bg-red-50 text-red-700 border-red-200', iconName: 'XCircle' },
+  { value: 'expired', labelFr: 'Certificat Expiré', labelEn: 'Expired', badgeColor: 'bg-orange-50 text-orange-700 border-orange-200', iconName: 'AlertTriangle' },
+  { value: 'manual_required', labelFr: 'Action manuelle requise', labelEn: 'Manual Required', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200', iconName: 'AlertOctagon' }
+];
+
+export const TRUST_LEVELS: {
+  value: TrustLevel;
+  labelFr: string;
+  labelEn: string;
+  badgeColor: string;
+  iconName: string;
+}[] = [
+  { value: 'verified', labelFr: 'Organisme Officiel Vérifié', labelEn: 'Verified Body', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200', iconName: 'ShieldCheck' },
+  { value: 'pending', labelFr: 'En cours de validation', labelEn: 'Pending Review', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200', iconName: 'Clock' },
+  { value: 'unverified', labelFr: 'Non vérifié', labelEn: 'Unverified', badgeColor: 'bg-gray-100 text-gray-700 border-gray-300', iconName: 'HelpCircle' }
+];
+

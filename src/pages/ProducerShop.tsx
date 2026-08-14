@@ -128,6 +128,33 @@ export default function ProducerShop() {
     );
   }
 
+  // If producer is not approved and user is neither the owner nor an admin
+  const isOwnerOrAdmin = user && (user.id === producer.user_id || user.email === 'bayahubert@yahoo.com');
+  const isApproved = producer.verification_status === 'approved' || producer.verified === true;
+
+  if (!isApproved && !isOwnerOrAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-2xl mx-auto px-4 py-24 text-center">
+          <div className="w-20 h-20 bg-amber-100 text-amber-700 rounded-3xl flex items-center justify-center mx-auto mb-6 text-3xl font-bold shadow-sm">
+            ⏳
+          </div>
+          <h1 className="text-2xl font-black text-gray-900 mb-3">Boutique en cours d'accréditation</h1>
+          <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+            Le dossier de <span className="font-bold text-gray-900">{producer.name}</span> est actuellement en cours d'audit et de vérification par l'équipe Bureau Veritas & EthiMarket. Ses produits seront visibles dès validation officielle de son dossier.
+          </p>
+          <div className="flex justify-center gap-4">
+            <Link to="/catalogue" className="btn-primary px-6 py-2.5 text-xs font-bold">
+              Explorer le catalogue vérifié →
+            </Link>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   const heroImage = 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1920&q=60';
 
   return (

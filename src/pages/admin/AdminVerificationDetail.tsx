@@ -5,12 +5,13 @@ import {
   Loader2, Mail, Phone, CheckCircle2,
   Clock, AlertTriangle, Building2, UserCheck, Check, History
 } from 'lucide-react';
-import { supabase, type Producer, type ProducerVerification, type VerificationDocument, type VerificationCertification, type VerificationEthicalCommitment, type VerificationHistory } from '../../lib/supabase';
+import { supabase, type Producer, type ProducerVerification, type VerificationDocument, type VerificationCertification, type VerificationEthicalCommitment, type VerificationHistory, type CertificationBody } from '../../lib/supabase';
 import { AdminPageHeader } from '../../components/AdminLayout';
 import { DocumentViewer } from '../../components/admin/DocumentViewer';
 import { DecisionPanel } from '../../components/admin/DecisionPanel';
 import { type VerificationChecklistState } from '../../components/admin/VerificationChecklist';
 import { LeafletMap } from '../../components/LeafletMap';
+import CertVerificationCard from '../../components/admin/CertVerificationCard';
 
 export default function AdminVerificationDetail() {
   const { producerId } = useParams<{ producerId: string }>();
@@ -22,6 +23,7 @@ export default function AdminVerificationDetail() {
   const [certifications, setCertifications] = useState<VerificationCertification[]>([]);
   const [ethical, setEthical] = useState<VerificationEthicalCommitment | null>(null);
   const [history, setHistory] = useState<VerificationHistory[]>([]);
+  const [knownBodies, setKnownBodies] = useState<CertificationBody[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -54,45 +56,124 @@ export default function AdminVerificationDetail() {
     const actualProducerId = pData?.id || producerId;
 
     // 2. Fetch verification record
-    const { data: vData } = await supabase
-      .from('producer_verifications')
-      .select('*')
-      .eq('producer_id', actualProducerId)
-      .maybeSingle();
-
-    if (vData) {
-      setVerification(vData as ProducerVerification);
-
-      // 3. Fetch docs
-      const { data: docs } = await supabase
-        .from('verification_documents')
+    let vRecord: ProducerVerification | null = null;
+    try {
+      const { data: vData } = await supabase
+        .from('producer_verifications')
         .select('*')
-        .eq('verification_id', vData.id);
-      setDocuments((docs as VerificationDocument[]) ?? []);
-
-      // 4. Fetch certs
-      const { data: certs } = await supabase
-        .from('verification_certifications')
-        .select('*')
-        .eq('verification_id', vData.id);
-      setCertifications((certs as VerificationCertification[]) ?? []);
-
-      // 5. Fetch ethical commitment
-      const { data: eth } = await supabase
-        .from('verification_ethical_commitments')
-        .select('*')
-        .eq('verification_id', vData.id)
+        .eq('producer_id', actualProducerId)
         .maybeSingle();
-      setEthical(eth as VerificationEthicalCommitment | null);
+      if (vData) vRecord = vData as ProducerVerification;
+    } catch (e) {
+      console.warn('Admin fetch verification error:', e);
+    }
+
+    if (!vRecord) {
+      const savedLocal = localStorage.getItem(`ethimarket_verification_${actualProducerId}`);
+      if (savedLocal) {
+        try {
+          vRecord = JSON.parse(savedLocal);
+        } catch (e) {
+          console.warn('Admin parse local verification error:', e);
+        }
+      }
+    }
+    setVerification(vRecord);
+
+    // 3. Fetch docs
+    let fetchedDocs: VerificationDocument[] = [];
+    if (vRecord?.id && !vRecord.id.startsWith('verif-')) {
+      try {
+        const { data: docs } = await supabase
+          .from('verification_documents')
+          .select('*')
+          .eq('verification_id', vRecord.id);
+        if (docs) fetchedDocs = docs as VerificationDocument[];
+      } catch (e) {
+        console.warn('Admin fetch docs error:', e);
+      }
+    }
+
+    const localDocsRaw = localStorage.getItem(`ethimarket_docs_${actualProducerId}`);
+    if (localDocsRaw) {
+      try {
+        const localDocs: VerificationDocument[] = JSON.parse(localDocsRaw);
+        const map = new Map<string, VerificationDocument>();
+        fetchedDocs.forEach(d => map.set(d.doc_type + (d.label || ''), d));
+        localDocs.forEach(d => map.set(d.doc_type + (d.label || ''), d));
+        fetchedDocs = Array.from(map.values());
+      } catch (e) {
+        console.warn('Admin parse local docs error:', e);
+      }
+    }
+    setDocuments(fetchedDocs);
+
+    // 4. Fetch certs
+    let fetchedCerts: VerificationCertification[] = [];
+    if (vRecord?.id && !vRecord.id.startsWith('verif-')) {
+      try {
+        const { data: certs } = await supabase
+          .from('verification_certifications')
+          .select('*')
+          .eq('verification_id', vRecord.id);
+        if (certs) fetchedCerts = certs as VerificationCertification[];
+      } catch (e) {
+        console.warn('Admin fetch certs error:', e);
+      }
+    }
+
+    const localCertsRaw = localStorage.getItem(`ethimarket_certs_${actualProducerId}`);
+    if (localCertsRaw) {
+      try {
+        const localCerts: VerificationCertification[] = JSON.parse(localCertsRaw);
+        const map = new Map<string, VerificationCertification>();
+        fetchedCerts.forEach(c => map.set(c.cert_type + c.cert_number, c));
+        localCerts.forEach(c => map.set(c.cert_type + c.cert_number, c));
+        fetchedCerts = Array.from(map.values());
+      } catch (e) {
+        console.warn('Admin parse local certs error:', e);
+      }
+    }
+    setCertifications(fetchedCerts);
+
+    // 5. Fetch ethical commitment
+    if (vRecord?.id) {
+      try {
+        const { data: eth } = await supabase
+          .from('verification_ethical_commitments')
+          .select('*')
+          .eq('verification_id', vRecord.id)
+          .maybeSingle();
+        setEthical(eth as VerificationEthicalCommitment | null);
+      } catch (e) {
+        console.warn('Admin fetch ethical error:', e);
+      }
     }
 
     // 6. Fetch verification history
-    const { data: hist } = await supabase
-      .from('verification_history')
-      .select('*')
-      .eq('producer_id', actualProducerId)
-      .order('created_at', { ascending: false });
-    setHistory((hist as VerificationHistory[]) ?? []);
+    try {
+      const { data: hist } = await supabase
+        .from('verification_history')
+        .select('*')
+        .eq('producer_id', actualProducerId)
+        .order('created_at', { ascending: false });
+      setHistory((hist as VerificationHistory[]) ?? []);
+    } catch (e) {
+      console.warn('Admin fetch history error:', e);
+    }
+
+    // 7. Fetch certification bodies
+    try {
+      const { data: bodies } = await supabase
+        .from('certification_bodies')
+        .select('*')
+        .order('name', { ascending: true });
+      if (bodies && bodies.length > 0) {
+        setKnownBodies(bodies as CertificationBody[]);
+      }
+    } catch (e) {
+      console.warn('Admin fetch cert bodies error:', e);
+    }
 
     setLoading(false);
   }, [producerId]);
@@ -366,9 +447,19 @@ export default function AdminVerificationDetail() {
       {/* SECTION D: CERTIFICATIONS */}
       <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-            <span>🌱</span> SECTION D : Certifications Bio & Éthiques
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+              <span>🌱</span> SECTION D : Certifications Bio, Durables & Éthiques
+            </h3>
+            <Link
+              to="/admin/organismes"
+              target="_blank"
+              className="text-xs text-brand-600 hover:text-brand-700 font-semibold hover:underline flex items-center gap-1 ml-2"
+            >
+              <span>(Voir base 30+ organismes mondiaux)</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
           <span className="text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full">
             {certifications.length} certification(s) déclarée(s)
           </span>
@@ -382,33 +473,23 @@ export default function AdminVerificationDetail() {
         ) : (
           <div className="space-y-4">
             {certifications.map(cert => (
-              <div key={cert.id} className="p-4 bg-gray-50 border border-gray-200 rounded-2xl space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-full">{cert.cert_type}</span>
-                    <h4 className="font-bold text-sm text-gray-900 mt-1">N° Certificat : {cert.cert_number}</h4>
-                    <p className="text-xs text-gray-500">Organisme : {cert.certifying_body} • Valide du {cert.issued_at} au {cert.expires_at}</p>
-                  </div>
-
-                  <a
-                    href={`https://www.google.com/search?q=${encodeURIComponent(cert.certifying_body + ' verification ' + cert.cert_number)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-brand-600" />
-                    Vérifier sur le site de l'organisme
-                  </a>
-                </div>
-
-                <DocumentViewer
-                  title={`Document Certificat - ${cert.cert_type}`}
-                  url={cert.file_path}
-                  status={docStatuses[`cert_${cert.id}`]?.status || 'pending'}
-                  onStatusChange={(st, c) => handleDocStatusChange(`cert_${cert.id}`, st, c)}
-                  required
-                />
-              </div>
+              <CertVerificationCard
+                key={cert.id}
+                cert={cert}
+                knownBodies={knownBodies}
+                initialStatus={
+                  docStatuses[`cert_${cert.id}`]?.status === 'valid'
+                    ? 'verified'
+                    : docStatuses[`cert_${cert.id}`]?.status === 'invalid'
+                    ? 'rejected'
+                    : 'pending'
+                }
+                initialNotes={docStatuses[`cert_${cert.id}`]?.comment || ''}
+                onStatusChange={(newStatus, notes) => {
+                  const mappedStatus = newStatus === 'verified' ? 'valid' : newStatus === 'rejected' ? 'invalid' : 'pending';
+                  handleDocStatusChange(`cert_${cert.id}`, mappedStatus as 'valid' | 'invalid', notes);
+                }}
+              />
             ))}
           </div>
         )}
