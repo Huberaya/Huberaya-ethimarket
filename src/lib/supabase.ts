@@ -167,6 +167,29 @@ export type ScoreDetails = {
   penalties: { total: number };
 };
 
+export type ProductAttributes = {
+  gender?: 'homme' | 'femme' | 'unisexe' | 'enfant' | 'bebe';
+  materials?: string[];
+  composition?: Record<string, number>;
+  colors?: string[];
+  sizes?: string[];
+  is_vegan?: boolean;
+  is_recycled?: boolean;
+  recycled_percentage?: number;
+  packaging_type?: 'recyclable' | 'biodegradable' | 'compostable' | 'plastic_free' | 'conventional';
+  living_wage_guaranteed?: boolean;
+  social_protection?: boolean;
+  is_cooperative?: boolean;
+  fair_trade_certified?: boolean;
+  manufacturing_country?: string;
+  raw_materials_origin?: string;
+  transport_distance_km?: number;
+  carbon_footprint_kg?: number;
+  water_footprint_liters?: number;
+  full_traceability?: boolean;
+  custom_attributes?: Record<string, string | number | boolean>;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -208,6 +231,28 @@ export type Product = {
   score_calculation: ProductScoreCalc | null;
   producers?: Producer | null;
   categories?: Category | null;
+  // Enriched search metadata
+  search_vector?: string | null;
+  keywords?: string[];
+  category_tags?: string[];
+  attributes?: ProductAttributes | null;
+  carbon_footprint_kg?: number;
+  water_footprint_liters?: number;
+  transport_distance_km?: number;
+  living_wage_guaranteed?: boolean;
+  social_protection?: boolean;
+  is_cooperative?: boolean;
+  is_vegan?: boolean;
+  is_recycled?: boolean;
+  recycled_percentage?: number;
+  packaging_type?: string;
+  product_type?: string;
+  target_gender?: string;
+  manufacturing_country?: string;
+  raw_materials_origin?: string;
+  confidence_score?: number;
+  similarity_score?: number;
+  relevance_rank?: number;
 };
 
 export type ProductScoreCalc = {
