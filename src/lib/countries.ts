@@ -200,6 +200,8 @@ export const COUNTRIES: Country[] = [
 
 export const CONTINENTS = ['Afrique', 'Amérique du Nord', 'Amérique du Sud', 'Asie', 'Europe', 'Océanie'];
 
+export const COUNTRIES_LIST = COUNTRIES;
+
 export function getCountryByName(name: string): Country | undefined {
   return COUNTRIES.find(c => c.name === name);
 }

@@ -3,35 +3,36 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   Calendar,
-  Building2,
   User,
   FileText,
   Clock,
   Send,
   AlertCircle,
   ExternalLink,
-  Phone,
-  MessageCircle,
-  Mail,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   History,
   Download,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react';
 import CertificationStatusBadge from '../../components/admin/CertificationStatusBadge';
 import ChannelBadge from '../../components/admin/ChannelBadge';
 import OneClickVerificationButton from '../../components/admin/OneClickVerificationButton';
+import MatchingQualityBadge from '../../components/admin/MatchingQualityBadge';
+import BodyAlternativeSelector from '../../components/admin/BodyAlternativeSelector';
+import UniversalContactModal from '../../components/admin/UniversalContactModal';
 import {
   getProducerCertificationById,
   updateCertificationStatus,
   recordManualResponse
 } from '../../lib/certificationVerificationService';
+import { findBestMatchingBody, FindBestMatchResult } from '../../lib/certificationMatchingService';
 import { useAuth } from '../../lib/auth';
 import type {
   ProducerCertification,
-  ProducerCertificationStatus
+  ProducerCertificationStatus,
+  CertificationBody
 } from '../../lib/supabase';
 import { PRODUCER_CERTIFICATION_STATUSES } from '../../lib/supabase';
 
@@ -44,7 +45,12 @@ export default function ProducerCertificationDetail() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // États pour la modal / action manuelle
+  // États pour la modale de contact & redirection intelligente
+  const [isContactModalOpen, setIsContactModalOpen] = useState<boolean>(false);
+  const [matchingResult, setMatchingResult] = useState<FindBestMatchResult | null>(null);
+  const [activeBody, setActiveBody] = useState<CertificationBody | null>(null);
+
+  // États pour la mise à jour manuelle
   const [selectedStatus, setSelectedStatus] = useState<ProducerCertificationStatus>('verified');
   const [adminNotes, setAdminNotes] = useState<string>('');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
@@ -69,6 +75,21 @@ export default function ProducerCertificationDetail() {
         setCertification(res.data);
         setSelectedStatus(res.data.status);
         setAdminNotes(res.data.admin_notes || '');
+        setActiveBody(res.data.certification_body || null);
+
+        // Exécution du moteur de matching
+        const prodCountry = res.data.producer?.country || res.data.country_of_issue || 'France';
+        const declared = res.data.certification_type || res.data.certification_standard?.name || 'Bio';
+
+        const match = await findBestMatchingBody({
+          standardName: declared,
+          producerCountry: prodCountry,
+          rawCertificationInput: declared
+        });
+        setMatchingResult(match);
+        if (!res.data.certification_body && match.primaryMatch) {
+          setActiveBody(match.primaryMatch);
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
@@ -141,16 +162,18 @@ export default function ProducerCertificationDetail() {
   const handleQuickDecision = async (newStatus: 'verified' | 'rejected') => {
     if (!id || !profile) return;
     setIsUpdatingStatus(true);
+    setStatusActionSuccess(null);
     try {
-      const defaultNote =
-        newStatus === 'verified'
-          ? 'Certification validée manuellement par l’administrateur.'
-          : 'Certification rejetée pour non-conformité.';
-      const res = await updateCertificationStatus(id, newStatus, profile.id, defaultNote);
+      const res = await updateCertificationStatus(
+        id,
+        newStatus,
+        profile.id,
+        newStatus === 'verified' ? 'Validation de conformité effectuée par l\'administrateur' : 'Dossier rejeté par l\'administrateur'
+      );
       if (res.error) {
         setError(res.error);
       } else {
-        setStatusActionSuccess(`Certification marquée comme ${newStatus === 'verified' ? 'Vérifiée' : 'Rejetée'}`);
+        setStatusActionSuccess(newStatus === 'verified' ? 'Certificat validé avec succès !' : 'Certificat rejeté');
         setTimeout(() => setStatusActionSuccess(null), 4000);
         await loadData();
       }
@@ -162,15 +185,14 @@ export default function ProducerCertificationDetail() {
     }
   };
 
-  // Enregistrement d'une réponse de contact reçue
+  // Enregistrer une réponse manuelle d'organisme
   const handleSaveManualResponse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !activeRequestId || !profile) return;
+    if (!activeRequestId || !profile) return;
 
     setIsSavingResponse(true);
     try {
       const res = await recordManualResponse(
-        id,
         activeRequestId,
         manualResponseText,
         responseResultStatus,
@@ -181,6 +203,8 @@ export default function ProducerCertificationDetail() {
       } else {
         setActiveRequestId(null);
         setManualResponseText('');
+        setStatusActionSuccess('Réponse de l\'organisme enregistrée avec succès');
+        setTimeout(() => setStatusActionSuccess(null), 4000);
         await loadData();
       }
     } catch (err: unknown) {
@@ -194,7 +218,7 @@ export default function ProducerCertificationDetail() {
   if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse">
-        <div className="h-10 bg-gray-200 rounded-xl w-1/3" />
+        <div className="h-8 bg-gray-200 rounded w-64" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="h-64 bg-white rounded-2xl border border-gray-100 p-6" />
@@ -238,14 +262,13 @@ export default function ProducerCertificationDetail() {
     );
   }
 
-  const body = certification?.certification_body;
   const standard = certification?.certification_standard;
   const requests = certification?.verification_requests || [];
   const logs = certification?.logs || [];
 
   return (
     <div className="space-y-6">
-      {/* En-tête avec bouton Retour et statut */}
+      {/* En-tête avec bouton Retour et actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -270,12 +293,21 @@ export default function ProducerCertificationDetail() {
           </div>
         </div>
 
-        {/* Bouton de vérification automatique 1-clic */}
-        {certification && certification.status !== 'verified' && (
-          <div className="flex items-center gap-2">
+        {/* Boutons d'actions en haut à droite */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsContactModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Contacter l'Organisme</span>
+          </button>
+
+          {certification && certification.status !== 'verified' && (
             <OneClickVerificationButton
               certificationId={certification.id}
-              certificationBody={body || null}
+              certificationBody={activeBody || null}
               currentStatus={certification.status}
               adminId={profile?.id || ''}
               size="md"
@@ -283,14 +315,14 @@ export default function ProducerCertificationDetail() {
                 loadData();
               }}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Messages de retour */}
+      {/* Messages d'alerte / succès */}
       {error && (
         <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="flex-1 text-xs">
             <p className="font-bold text-sm">Une erreur est survenue</p>
             <p className="mt-0.5">{error}</p>
@@ -307,31 +339,31 @@ export default function ProducerCertificationDetail() {
 
       {statusActionSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
           <p className="text-xs font-bold">{statusActionSuccess}</p>
         </div>
       )}
 
       {/* Grille Principale 2 Colonnes */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLONNE GAUCHE (2/3) : Détails du certificat + Organisme + Historique */}
+        {/* COLONNE GAUCHE (2/3) : Détails du certificat + Organisme & Matching + Historique */}
         <div className="lg:col-span-2 space-y-6">
           {/* CARTE 1 : Informations générales du certificat */}
-          <section aria-label="Informations du certificat" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-5">
+          <section aria-label="Informations du certificat" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-5">
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-brand-600" />
                 <h2 className="text-base font-bold text-gray-900">Détails du certificat</h2>
               </div>
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-100 px-2.5 py-1 rounded-lg">
-                Type : {certification?.certification_type}
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                Standard : {certification?.certification_type}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1">
                 <span className="text-gray-400 font-medium">Standard associé</span>
-                <p className="font-bold text-gray-900 text-sm">{standard?.name || 'Standard non rattaché'}</p>
+                <p className="font-bold text-gray-900 text-sm">{standard?.name || certification?.certification_type || 'Standard non rattaché'}</p>
                 {standard?.code && <p className="text-gray-500 font-mono text-[11px]">{standard.code}</p>}
               </div>
 
@@ -402,97 +434,54 @@ export default function ProducerCertificationDetail() {
             </div>
           </section>
 
-          {/* CARTE 2 : Organisme certificateur lié */}
-          <section aria-label="Organisme certificateur" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          {/* CARTE 2 : Redirection Intelligente & Organisme Recommandé */}
+          <section aria-label="Organisme certificateur" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-blue-600" />
-                <h2 className="text-base font-bold text-gray-900">Organisme Certificateur</h2>
+                <Sparkles className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-base font-bold text-gray-900">Organisme Certificateur & Redirection Intelligente</h2>
               </div>
-              {body && (
-                <Link
-                  to={`/admin/certifications/bodies/${body.id}`}
-                  className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
-                >
-                  <span>Fiche organisme</span>
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
+              {matchingResult && (
+                <MatchingQualityBadge
+                  quality={matchingResult.matchQuality}
+                  score={matchingResult.matchScore}
+                  reasons={matchingResult.matchReasons}
+                  size="sm"
+                />
               )}
             </div>
 
-            {body ? (
-              <div className="space-y-4 text-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-900">{body.name}</h3>
-                    <p className="text-gray-500">
-                      Région : <strong>{body.region}</strong> {body.country && `• ${body.country}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ChannelBadge
-                      channel={body.api_endpoint ? 'api' : body.email_contact ? 'email' : 'manual'}
-                      size="md"
-                    />
-                  </div>
-                </div>
+            <BodyAlternativeSelector
+              currentBody={activeBody}
+              alternatives={matchingResult?.alternativeMatches || []}
+              onSelectBody={(b) => setActiveBody(b)}
+              fuzzyCorrectionSuggestion={matchingResult?.fuzzyCorrectionSuggestion}
+            />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  {body.email_contact && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                      <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <a href={`mailto:${body.email_contact}`} className="font-semibold text-gray-800 truncate hover:underline">
-                        {body.email_contact}
-                      </a>
-                    </div>
-                  )}
+            {activeBody && (
+              <div className="pt-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setIsContactModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Ouvrir la console de contact multicanal</span>
+                </button>
 
-                  {body.phone && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                      <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <a href={`tel:${body.phone}`} className="font-semibold text-gray-800 hover:underline">
-                        {body.phone}
-                      </a>
-                    </div>
-                  )}
-
-                  {body.whatsapp && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                      <MessageCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                      <span className="font-semibold text-gray-800">WhatsApp : {body.whatsapp}</span>
-                    </div>
-                  )}
-
-                  {body.verification_url && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                      <ExternalLink className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                      <a
-                        href={body.verification_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold text-blue-600 hover:underline truncate"
-                      >
-                        Portail en ligne
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
-                <div>
-                  <p className="font-bold">Aucun organisme de certification associé</p>
-                  <p className="mt-0.5 text-amber-700">
-                    Veuillez associer un organisme ou traiter ce dossier manuellement pour contacter l'autorité compétente.
-                  </p>
-                </div>
+                <Link
+                  to={`/admin/certifications/bodies/${activeBody.id}`}
+                  className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                >
+                  <span>Consulter la fiche complète</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
               </div>
             )}
           </section>
 
-          {/* CARTE 3 : Historique des requêtes et contacts */}
-          <section aria-label="Historique des demandes" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          {/* CARTE 3 : Historique des demandes de vérification */}
+          <section aria-label="Historique des demandes" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <Send className="w-5 h-5 text-indigo-600" />
@@ -615,7 +604,7 @@ export default function ProducerCertificationDetail() {
           </section>
 
           {/* CARTE 4 : Journal d'audit et logs complets */}
-          <section aria-label="Journal d'audit" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          <section aria-label="Journal d'audit" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <History className="w-5 h-5 text-gray-600" />
@@ -658,7 +647,7 @@ export default function ProducerCertificationDetail() {
         {/* COLONNE DROITE (1/3) : Actions Administrateur et Producteur */}
         <div className="space-y-6">
           {/* CARTE : Actions d'audit et Décision manuelle */}
-          <section aria-label="Décision manuelle" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          <section aria-label="Décision manuelle" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <h2 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">
               Action administrateur
             </h2>
@@ -671,7 +660,7 @@ export default function ProducerCertificationDetail() {
                   type="button"
                   onClick={() => handleQuickDecision('verified')}
                   disabled={isUpdatingStatus || certification?.status === 'verified'}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Valider conforme</span>
@@ -680,7 +669,7 @@ export default function ProducerCertificationDetail() {
                   type="button"
                   onClick={() => handleQuickDecision('rejected')}
                   disabled={isUpdatingStatus || certification?.status === 'rejected'}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
                 >
                   <XCircle className="w-4 h-4" />
                   <span>Rejeter</span>
@@ -730,7 +719,7 @@ export default function ProducerCertificationDetail() {
           </section>
 
           {/* CARTE : Fiche du producteur */}
-          <section aria-label="Informations producteur" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          <section aria-label="Informations producteur" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-gray-700" />
@@ -765,6 +754,20 @@ export default function ProducerCertificationDetail() {
           </section>
         </div>
       </div>
+
+      {/* Modale de contact universelle */}
+      {isContactModalOpen && (
+        <UniversalContactModal
+          isOpen={isContactModalOpen}
+          onClose={() => setIsContactModalOpen(false)}
+          body={activeBody}
+          certificateNumber={certification.certificate_number || 'N/A'}
+          producerName={certification.producer?.name || 'Producteur Partenaire'}
+          producerCountry={certification.producer?.country || certification.country_of_issue || 'France'}
+          declaredStandard={certification.certification_type || certification.certification_standard?.name || 'Bio'}
+          onBodySelected={(b) => setActiveBody(b)}
+        />
+      )}
     </div>
   );
 }

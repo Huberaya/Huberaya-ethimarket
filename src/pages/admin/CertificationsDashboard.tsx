@@ -11,7 +11,8 @@ import {
   FileText,
   AlertCircle,
   CheckCircle2,
-  Calendar
+  Sparkles,
+  Send
 } from 'lucide-react';
 import { AdminPageHeader } from '../../components/AdminLayout';
 import { getCertificationDashboardStats } from '../../lib/certificationVerificationService';
@@ -67,9 +68,6 @@ export default function CertificationsDashboard() {
     fetchStats();
   }, [fetchStats]);
 
-  // Date limite dans 30 jours au format ISO pour le lien
-  const in30DaysDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-
   // Calculs KPI
   const pendingCount = stats ? (stats.unverified + stats.pending + stats.contact_sent) : 0;
   const actionRequiredCount = stats ? (stats.rejected + stats.expired + stats.manual_required) : 0;
@@ -80,13 +78,13 @@ export default function CertificationsDashboard() {
       {/* Header */}
       <AdminPageHeader
         title="Tableau de bord certifications"
-        subtitle="Supervision mondiale des certifications et labels éthiques des producteurs"
+        subtitle="Supervision mondiale des certifications et mise en relation automatique intelligente"
       >
         <button
           type="button"
           onClick={fetchStats}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs sm:text-sm font-semibold text-gray-700 shadow-xs transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs transition-colors disabled:opacity-50"
           aria-label="Actualiser les données"
         >
           <RefreshCw className={`w-4 h-4 text-gray-500 ${isLoading ? 'animate-spin' : ''}`} />
@@ -97,7 +95,7 @@ export default function CertificationsDashboard() {
       {/* Message d'erreur */}
       {error && (
         <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-bold text-sm">Impossible de charger les statistiques</p>
             <p className="text-xs text-red-600 mt-0.5">{error}</p>
@@ -111,6 +109,41 @@ export default function CertificationsDashboard() {
           </button>
         </div>
       )}
+
+      {/* Bannière Moteur de Redirection Intelligente */}
+      <div className="bg-gradient-to-r from-emerald-900 via-brand-900 to-indigo-950 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-emerald-500/20 border border-emerald-400/30 rounded-lg text-emerald-300 text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Moteur de Matching Producteur ↔ Organisme Actif</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-white">
+              Redirection Automatique & Précision Géolocalisée
+            </h2>
+            <p className="text-xs sm:text-sm text-emerald-100/80 leading-relaxed">
+              Mise en correspondance multi-critères instantanée sur 105+ organismes accrédités et 25+ standards mondiaux avec tolérance phonétique et linguistique.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+            <Link
+              to="/admin/certifications/producers"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold rounded-xl text-xs sm:text-sm shadow-sm transition-all hover:scale-105"
+            >
+              <Send className="w-4 h-4" />
+              <span>Gérer les vérifications</span>
+            </Link>
+            <Link
+              to="/admin/certifications/bodies"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-xs sm:text-sm border border-white/20 transition-colors"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Annuaire organismes</span>
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* Skeleton Loading */}
       {isLoading && (
@@ -130,15 +163,6 @@ export default function CertificationsDashboard() {
             <div className="h-4 bg-gray-200 rounded w-full" />
             <div className="h-4 bg-gray-100 rounded w-3/4" />
           </div>
-          {/* Skeleton Grid */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 space-y-4">
-            <div className="h-5 bg-gray-200 rounded w-1/4" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-              {[1, 2, 3, 4, 5, 6, 7].map(i => (
-                <div key={i} className="h-24 bg-gray-100 rounded-xl" />
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -147,106 +171,68 @@ export default function CertificationsDashboard() {
           {/* SECTION 1 — KPI Cards (Ligne de 4 cartes) */}
           <section aria-label="Indicateurs clés de performance" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Carte 1 : Total des certifications */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex items-center justify-between">
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total certifications</p>
                 <p className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">{stats.total}</p>
                 <p className="text-xs text-gray-400 mt-0.5">Toutes régions confondues</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                 <Award className="w-6 h-6" />
               </div>
             </div>
 
-            {/* Carte 2 : En attente de vérification */}
-            <Link
-              to="/admin/certifications/producers?status=pending"
-              className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-amber-300 hover:shadow-md transition-all flex items-center justify-between group"
-            >
+            {/* Carte 2 : Taux de validation */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">En attente de vérif.</p>
-                <p className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">{pendingCount}</p>
-                <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1 font-medium group-hover:underline">
-                  <span>Examiner les dossiers</span>
-                  <ArrowRight className="w-3 h-3" />
-                </p>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Taux de conformité</p>
+                <p className="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">{verifiedRate}%</p>
+                <p className="text-xs text-emerald-700 mt-0.5">{stats.verified} vérifiées</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                <Clock className="w-6 h-6" />
-              </div>
-            </Link>
-
-            {/* Carte 3 : Vérifiées et conformes */}
-            <Link
-              to="/admin/certifications/producers?status=verified"
-              className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all flex items-center justify-between group"
-            >
-              <div>
-                <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Vérifiées & Conformes</p>
-                <p className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">{stats.verified}</p>
-                <p className="text-xs text-emerald-600 mt-0.5 font-medium">{verifiedRate}% de taux de conformité</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-6 h-6" />
               </div>
-            </Link>
+            </div>
 
-            {/* Carte 4 : Action requise */}
-            <Link
-              to="/admin/certifications/producers?status=manual_required"
-              className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs hover:border-red-300 hover:shadow-md transition-all flex items-center justify-between group"
-            >
+            {/* Carte 3 : Dossiers en cours */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-red-700 uppercase tracking-wider">Action requise</p>
-                <p className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">{actionRequiredCount}</p>
-                <p className="text-xs text-red-600 mt-0.5 flex items-center gap-1 font-medium group-hover:underline">
-                  <span>Rejetées / Expirées / Manuel</span>
-                  <ArrowRight className="w-3 h-3" />
-                </p>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">En cours de traitement</p>
+                <p className="text-2xl sm:text-3xl font-black text-amber-600 mt-1">{pendingCount}</p>
+                <p className="text-xs text-amber-700 mt-0.5">Non vérifiées ou attente</p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Carte 4 : Attention requise */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Attention requise</p>
+                <p className="text-2xl sm:text-3xl font-black text-red-600 mt-1">{actionRequiredCount}</p>
+                <p className="text-xs text-red-700 mt-0.5">{stats.expired} expirées, {stats.rejected} rejetées</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-            </Link>
+            </div>
           </section>
 
-          {/* SECTION 2 — Alerte expiration imminente */}
-          {stats.expiring_soon > 0 && (
-            <div
-              role="alert"
-              className="p-4 sm:p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fadeIn"
-            >
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm sm:text-base text-amber-950">
-                    ⚠️ {stats.expiring_soon} certification{stats.expiring_soon > 1 ? 's' : ''} expire{stats.expiring_soon > 1 ? 'nt' : ''} dans moins de 30 jours
-                  </h3>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    Planifiez le renouvellement ou contactez les producteurs pour obtenir les certificats actualisés.
-                  </p>
-                </div>
-              </div>
-              <Link
-                to={`/admin/certifications/producers?expires_before=${in30DaysDate}`}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors whitespace-nowrap self-start sm:self-auto"
-              >
-                <span>Voir les certifications</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          )}
-
-          {/* SECTION 3 — Répartition par statut */}
-          <section aria-label="Répartition des certifications par statut" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          {/* SECTION 3 — Barre de progression globale des statuts */}
+          <section aria-label="Répartition par statut" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h2 className="text-base font-black text-gray-900">Répartition par statut</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Ventilation globale du portefeuille de certifications</p>
+                <h2 className="text-base font-black text-gray-900">État du parc des certifications</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Ventilation en temps réel selon les étapes d'audit</p>
               </div>
-              <span className="text-xs font-semibold text-gray-400">{stats.total} dossiers au total</span>
+              <Link
+                to="/admin/certifications/producers"
+                className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1 self-start sm:self-auto"
+              >
+                <span>Voir toutes les certifications</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
 
             {/* Barre horizontale segmentée */}
@@ -282,7 +268,7 @@ export default function CertificationsDashboard() {
                     className={`flex items-center justify-between p-2.5 rounded-xl border border-gray-100 hover:border-gray-300 ${seg.bgLight} transition-all`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-3 h-3 rounded-full ${seg.color} flex-shrink-0`} />
+                      <span className={`w-3 h-3 rounded-full ${seg.color} shrink-0`} />
                       <span className={`text-xs font-bold ${seg.text} truncate`}>{seg.label}</span>
                     </div>
                     <span className="text-xs font-black text-gray-900 ml-2">
@@ -295,7 +281,7 @@ export default function CertificationsDashboard() {
           </section>
 
           {/* SECTION 4 — Répartition par région */}
-          <section aria-label="Répartition géographique des certifications" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+          <section aria-label="Répartition géographique des certifications" className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs space-y-4">
             <div>
               <h2 className="text-base font-black text-gray-900">Répartition par région mondiale</h2>
               <p className="text-xs text-gray-500 mt-0.5">Distribution des certifications selon l'organisme d'attache</p>
@@ -332,12 +318,11 @@ export default function CertificationsDashboard() {
 
           {/* SECTION 5 — Raccourcis d'actions rapides */}
           <section aria-label="Raccourcis d'actions administratives" className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Raccourci 1 */}
             <Link
               to="/admin/certifications/producers?status=pending"
-              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs hover:border-brand-300 hover:shadow-md transition-all flex items-start gap-4 group"
+              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:border-brand-300 hover:shadow-md transition-all flex items-start gap-4 group"
             >
-              <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
@@ -346,17 +331,16 @@ export default function CertificationsDashboard() {
                   <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all" />
                 </h3>
                 <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                  Examiner et valider en 1 clic les certifications soumises par les producteurs.
+                  Examiner et valider avec matching automatique les certifications soumises.
                 </p>
               </div>
             </Link>
 
-            {/* Raccourci 2 */}
             <Link
               to="/admin/certifications/bodies"
-              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs hover:border-blue-300 hover:shadow-md transition-all flex items-start gap-4 group"
+              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:border-blue-300 hover:shadow-md transition-all flex items-start gap-4 group"
             >
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Globe className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
@@ -365,26 +349,25 @@ export default function CertificationsDashboard() {
                   <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all" />
                 </h3>
                 <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                  Consulter l'annuaire mondial des organismes, canaux API, contacts et formulaires.
+                  Consulter l'annuaire mondial des 105+ organismes, canaux API et formulaires.
                 </p>
               </div>
             </Link>
 
-            {/* Raccourci 3 */}
             <Link
               to="/admin/certifications/templates"
-              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs hover:border-purple-300 hover:shadow-md transition-all flex items-start gap-4 group"
+              className="p-5 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:border-purple-300 hover:shadow-md transition-all flex items-start gap-4 group"
             >
-              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <FileText className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold text-gray-900 group-hover:text-purple-600 transition-colors flex items-center gap-1.5">
-                  <span>Templates de messages</span>
+                  <span>Templates multilingues</span>
                   <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all" />
                 </h3>
                 <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                  Personnaliser les modèles de courriels et messages WhatsApp multilingues.
+                  Personnaliser les modèles de courriels et messages WhatsApp en 7 langues.
                 </p>
               </div>
             </Link>

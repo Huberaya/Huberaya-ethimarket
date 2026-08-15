@@ -2084,3 +2084,5 @@ export const GLOBAL_CERTIFICATION_BODIES_SEED: Partial<CertificationBody>[] = [
     is_active: true
   }
 ];
+
+export const MOCK_GLOBAL_CERTIFICATION_BODIES = GLOBAL_CERTIFICATION_BODIES_SEED as CertificationBody[];

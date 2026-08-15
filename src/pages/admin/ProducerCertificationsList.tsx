@@ -12,21 +12,25 @@ import {
   Building2,
   AlertCircle,
   FileCheck2,
-  ArrowUpDown
+  ArrowUpDown,
+  Send,
+  CheckSquare,
+  Square,
+  CheckCircle2
 } from 'lucide-react';
 import { AdminPageHeader } from '../../components/AdminLayout';
 import CertificationStatusBadge from '../../components/admin/CertificationStatusBadge';
-import ChannelBadge from '../../components/admin/ChannelBadge';
-import OneClickVerificationButton from '../../components/admin/OneClickVerificationButton';
-import { getProducerCertifications, resetDemoCertifications } from '../../lib/certificationVerificationService';
-import { useAuth } from '../../lib/auth';
+import MatchingQualityBadge from '../../components/admin/MatchingQualityBadge';
+import UniversalContactModal from '../../components/admin/UniversalContactModal';
+import { getProducerCertifications } from '../../lib/certificationVerificationService';
+import { findBestMatchingBody } from '../../lib/certificationMatchingService';
 import type {
   ProducerCertification,
-  ProducerCertificationStatus
+  ProducerCertificationStatus,
+  CertificationBody
 } from '../../lib/supabase';
 import {
   PRODUCER_CERTIFICATION_STATUSES,
-  CERTIFICATION_REGIONS,
   CERTIFICATION_TYPES
 } from '../../lib/supabase';
 
@@ -76,29 +80,43 @@ const COUNTRY_FLAGS: Record<string, string> = {
 
 const ITEMS_PER_PAGE = 20;
 
-type SortField = 'status' | 'expires_at' | 'updated_at';
+type SortField = 'status' | 'expires_at' | 'updated_at' | 'match_score';
 type SortOrder = 'asc' | 'desc';
+
+interface EnhancedCertRow extends ProducerCertification {
+  matchedBody?: CertificationBody | null;
+  matchScore?: number;
+  matchQuality?: 'perfect' | 'regional' | 'continental' | 'hq' | 'none';
+  matchReasons?: string[];
+}
 
 export default function ProducerCertificationsList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
 
   // Filtres issus de l'URL
   const querySearch = searchParams.get('search') || '';
   const queryStatus = searchParams.get('status') || 'ALL';
   const queryRegion = searchParams.get('region') || 'ALL';
   const queryType = searchParams.get('type') || 'ALL';
+  const queryMatchQuality = searchParams.get('match_quality') || 'ALL';
   const queryExpiresBefore = searchParams.get('expires_before') || '';
   const queryExpiresAfter = searchParams.get('expires_after') || '';
   const queryPage = parseInt(searchParams.get('page') || '1', 10);
 
   // États locaux
   const [searchInput, setSearchInput] = useState(querySearch);
-  const [certifications, setCertifications] = useState<ProducerCertification[]>([]);
+  const [certifications, setCertifications] = useState<EnhancedCertRow[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Sélection multiple pour actions groupées
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Modale de contact intelligent
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [activeContactCert, setActiveContactCert] = useState<EnhancedCertRow | null>(null);
 
   // Tri local
   const [sortField, setSortField] = useState<SortField>('updated_at');
@@ -124,7 +142,7 @@ export default function ProducerCertificationsList() {
     return () => clearTimeout(timer);
   }, [searchInput, querySearch, setSearchParams]);
 
-  // Chargement des données
+  // Chargement et enrichissement des certifications avec le moteur de matching
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -147,9 +165,9 @@ export default function ProducerCertificationsList() {
         setCertifications([]);
         setTotalCount(0);
       } else {
-        let items = res.data;
+        let items: ProducerCertification[] = res.data;
 
-        // Filtrage côté client additionnel pour région et type si spécifiés
+        // Filtrage côté client additionnel
         if (queryRegion !== 'ALL') {
           items = items.filter(c => c.certification_body?.region === queryRegion);
         }
@@ -157,7 +175,35 @@ export default function ProducerCertificationsList() {
           items = items.filter(c => c.certification_type === queryType);
         }
 
-        setCertifications(items);
+        // Enrichissement de chaque ligne avec le moteur de redirection automatique
+        const enhancedItems: EnhancedCertRow[] = await Promise.all(
+          items.map(async (cert) => {
+            const prodCountry = cert.producer?.country || cert.country_of_issue || 'France';
+            const declared = cert.certification_type || cert.certification_standard?.name || 'Bio';
+
+            const matchRes = await findBestMatchingBody({
+              standardName: declared,
+              producerCountry: prodCountry,
+              rawCertificationInput: declared
+            });
+
+            return {
+              ...cert,
+              matchedBody: cert.certification_body || matchRes.primaryMatch,
+              matchScore: matchRes.matchScore,
+              matchQuality: matchRes.matchQuality,
+              matchReasons: matchRes.matchReasons
+            };
+          })
+        );
+
+        // Filtre par qualité de match si activé
+        let filteredEnhanced = enhancedItems;
+        if (queryMatchQuality !== 'ALL') {
+          filteredEnhanced = enhancedItems.filter(i => i.matchQuality === queryMatchQuality);
+        }
+
+        setCertifications(filteredEnhanced);
         setTotalCount(res.count);
       }
     } catch (err: unknown) {
@@ -166,7 +212,7 @@ export default function ProducerCertificationsList() {
     } finally {
       setIsLoading(false);
     }
-  }, [queryStatus, querySearch, queryExpiresBefore, queryExpiresAfter, queryRegion, queryType, queryPage]);
+  }, [queryStatus, querySearch, queryExpiresBefore, queryExpiresAfter, queryRegion, queryType, queryMatchQuality, queryPage]);
 
   useEffect(() => {
     loadData();
@@ -188,6 +234,7 @@ export default function ProducerCertificationsList() {
 
   const handleResetFilters = () => {
     setSearchInput('');
+    setSelectedIds(new Set());
     setSearchParams(new URLSearchParams());
   };
 
@@ -210,6 +257,35 @@ export default function ProducerCertificationsList() {
     }
   };
 
+  // Gestion sélection checkbox
+  const toggleSelectAll = () => {
+    if (selectedIds.size === certifications.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(certifications.map(c => c.id)));
+    }
+  };
+
+  const toggleSelectId = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Ouvre le modal de contact intelligent
+  const handleOpenSmartContact = (cert: EnhancedCertRow, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setActiveContactCert(cert);
+    setContactModalOpen(true);
+  };
+
   // Certifications triées
   const sortedCertifications = useMemo(() => {
     const list = [...certifications];
@@ -226,6 +302,9 @@ export default function ProducerCertificationsList() {
       } else if (sortField === 'updated_at') {
         aVal = a.updated_at || '';
         bVal = b.updated_at || '';
+      } else if (sortField === 'match_score') {
+        aVal = a.matchScore || 0;
+        bVal = b.matchScore || 0;
       }
 
       if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
@@ -244,12 +323,11 @@ export default function ProducerCertificationsList() {
       'pays',
       'numéro_certificat',
       'type_certification',
-      'organisme',
-      'région',
+      'organisme_suggéré',
+      'score_matching',
+      'qualité_matching',
       'statut',
-      'date_émission',
-      'date_expiration',
-      'dernière_action'
+      'date_expiration'
     ];
 
     const rows = sortedCertifications.map(c => [
@@ -257,12 +335,11 @@ export default function ProducerCertificationsList() {
       `"${(c.producer?.country || c.country_of_issue || '').replace(/"/g, '""')}"`,
       `"${(c.certificate_number || '').replace(/"/g, '""')}"`,
       `"${c.certification_type || ''}"`,
-      `"${(c.certification_body?.name || '').replace(/"/g, '""')}"`,
-      `"${c.certification_body?.region || ''}"`,
+      `"${(c.matchedBody?.name || '').replace(/"/g, '""')}"`,
+      `${c.matchScore || 0}%`,
+      `"${c.matchQuality || 'none'}"`,
       `"${c.status}"`,
-      c.issued_at || '',
-      c.expires_at || '',
-      c.updated_at || ''
+      c.expires_at || ''
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -271,7 +348,7 @@ export default function ProducerCertificationsList() {
     const link = document.createElement('a');
     const today = new Date().toISOString().split('T')[0];
     link.setAttribute('href', url);
-    link.setAttribute('download', `certifications_ethimarket_${today}.csv`);
+    link.setAttribute('download', `certifications_ethimarket_matching_${today}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -282,6 +359,7 @@ export default function ProducerCertificationsList() {
     queryStatus !== 'ALL' ||
     queryRegion !== 'ALL' ||
     queryType !== 'ALL' ||
+    queryMatchQuality !== 'ALL' ||
     queryExpiresBefore !== '' ||
     queryExpiresAfter !== '';
 
@@ -297,96 +375,128 @@ export default function ProducerCertificationsList() {
     }
   };
 
+  // Calcul des métriques de matching sur l'échantillon actuel
+  const perfectMatchCount = certifications.filter(c => c.matchQuality === 'perfect').length;
+  const regionalMatchCount = certifications.filter(c => c.matchQuality === 'regional' || c.matchQuality === 'continental').length;
+
   return (
     <div className="space-y-6">
-      {/* SECTION 1 — En-tête de page */}
+      {/* SECTION 1 — En-tête */}
       <AdminPageHeader
-        title="Certifications producteurs"
-        subtitle="Vérification et audit des certifications soumises par les producteurs"
-      >
-        <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex text-xs font-bold px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700">
-            {totalCount} certification{totalCount > 1 ? 's' : ''} au total
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              resetDemoCertifications();
-              loadData();
-            }}
-            title="Recharger et réinitialiser les données"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-xs transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
-            <span className="hidden md:inline">Actualiser</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            disabled={certifications.length === 0}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs sm:text-sm font-semibold text-gray-700 shadow-xs transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4 text-gray-500" />
-            <span>Exporter CSV</span>
-          </button>
-        </div>
-      </AdminPageHeader>
+        title="Certifications & Redirection Intelligente"
+        subtitle="Mise en relation automatique des déclarations producteurs avec les organismes certificateurs géolocalisés"
+        badgeText={`${totalCount} déclarations`}
+        actions={
+          <div className="flex items-center gap-2.5">
+            {selectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const firstSelected = certifications.find(c => selectedIds.has(c.id));
+                  if (firstSelected) handleOpenSmartContact(firstSelected);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors animate-pulse"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Contacter pour la sélection ({selectedIds.size})</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              disabled={certifications.length === 0}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
+            >
+              <Download className="w-4 h-4 text-gray-500" />
+              <span>Exporter CSV</span>
+            </button>
+          </div>
+        }
+      />
 
-      {/* SECTION 2 — Barre de filtres */}
-      <section aria-label="Filtres de recherche" className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Filtre 1 : Recherche texte */}
-          <div className="relative">
+      {/* KPI Cards de Performance du Moteur de Matching */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-2xs">
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Certifications Actives</span>
+          <div className="text-2xl font-black text-gray-900 mt-1">{totalCount}</div>
+          <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 mt-1">
+            <CheckCircle2 className="w-3 h-3" /> Base synchronisée
+          </span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs">
+          <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Correspondance Parfaite</span>
+          <div className="text-2xl font-black text-emerald-800 mt-1">{perfectMatchCount}</div>
+          <span className="text-[11px] text-emerald-600 font-medium mt-1 block">Bureau national identifié</span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-2xs">
+          <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Couverture Régionale</span>
+          <div className="text-2xl font-black text-amber-800 mt-1">{regionalMatchCount}</div>
+          <span className="text-[11px] text-amber-600 font-medium mt-1 block">Bureau régional ou continental</span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-brand-100 shadow-2xs">
+          <span className="text-[11px] font-bold text-brand-700 uppercase tracking-wider block">Canaux Opérationnels</span>
+          <div className="text-2xl font-black text-brand-800 mt-1">100%</div>
+          <span className="text-[11px] text-brand-600 font-medium mt-1 block">Email, WhatsApp, Web, PDF</span>
+        </div>
+      </div>
+
+      {/* SECTION 2 — Filtres et Recherche */}
+      <section aria-label="Filtres" className="bg-white rounded-2xl border border-gray-100 shadow-2xs p-4 space-y-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Recherche */}
+          <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
+              placeholder="Rechercher producteur, certificat, pays, organisme..."
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              placeholder="Numéro de certificat, nom..."
-              className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-gray-50/70 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 transition-all placeholder:text-gray-400"
+              className="w-full pl-9.5 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 transition-colors"
             />
           </div>
 
-          {/* Filtre 2 : Statut */}
+          {/* Filtre Qualité de Matching */}
+          <div>
+            <select
+              value={queryMatchQuality}
+              onChange={e => handleFilterChange('match_quality', e.target.value)}
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-700 font-medium focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="ALL">🎯 Tout niveau de matching</option>
+              <option value="perfect">🟢 Match Parfait (National)</option>
+              <option value="regional">🟠 Match Régional</option>
+              <option value="continental">🔵 Match Continental</option>
+              <option value="none">🔴 Aucun match automatique</option>
+            </select>
+          </div>
+
+          {/* Filtre Statut */}
           <div>
             <select
               value={queryStatus}
               onChange={e => handleFilterChange('status', e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50/70 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-medium text-gray-700"
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-700 font-medium focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
             >
               <option value="ALL">Tous les statuts</option>
-              {PRODUCER_CERTIFICATION_STATUSES.map(s => (
-                <option key={s.value} value={s.value}>
-                  {s.labelFr}
+              {PRODUCER_CERTIFICATION_STATUSES.map(st => (
+                <option key={st.value} value={st.value}>
+                  {st.label}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Filtre 3 : Région */}
-          <div>
-            <select
-              value={queryRegion}
-              onChange={e => handleFilterChange('region', e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50/70 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-medium text-gray-700"
-            >
-              <option value="ALL">Toutes les régions</option>
-              {CERTIFICATION_REGIONS.map(r => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filtre 4 : Type de certification */}
+          {/* Filtre Type de certification */}
           <div>
             <select
               value={queryType}
               onChange={e => handleFilterChange('type', e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50/70 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-medium text-gray-700"
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-700 font-medium focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
             >
-              <option value="ALL">Tous les types</option>
+              <option value="ALL">Tous les standards</option>
               {CERTIFICATION_TYPES.map(t => (
                 <option key={t} value={t}>
                   {t}
@@ -396,7 +506,7 @@ export default function ProducerCertificationsList() {
           </div>
         </div>
 
-        {/* Ligne 2 : Dates d'expiration & Reset */}
+        {/* Ligne filtres secondaires */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-gray-100 text-xs">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
@@ -435,7 +545,7 @@ export default function ProducerCertificationsList() {
       {/* Message d'erreur */}
       {error && (
         <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-bold text-sm">Erreur lors de la récupération des certifications</p>
             <p className="text-xs text-red-600 mt-0.5">{error}</p>
@@ -450,15 +560,34 @@ export default function ProducerCertificationsList() {
         </div>
       )}
 
-      {/* SECTION 3 — Tableau de données */}
-      <section aria-label="Tableau des certifications" className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+      {/* SECTION 3 — Tableau de données avec Redirection Intelligente */}
+      <section aria-label="Tableau des certifications" className="bg-white rounded-2xl border border-gray-100 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[900px]">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-gray-50/80 border-b border-gray-100 text-gray-500 font-bold text-xs uppercase tracking-wider">
-                <th scope="col" className="py-3.5 px-4 sm:px-6">Producteur</th>
-                <th scope="col" className="py-3.5 px-4">Certification</th>
-                <th scope="col" className="py-3.5 px-4">Organisme</th>
+                <th scope="col" className="py-3.5 px-3 w-10 text-center">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    className="text-gray-500 hover:text-gray-900"
+                    title="Tout sélectionner"
+                  >
+                    {selectedIds.size > 0 && selectedIds.size === certifications.length ? (
+                      <CheckSquare className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                  </button>
+                </th>
+                <th scope="col" className="py-3.5 px-4 sm:px-5">Producteur & Pays</th>
+                <th scope="col" className="py-3.5 px-4">Standard Déclaré</th>
+                <th scope="col" className="py-3.5 px-4 cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort('match_score')}>
+                  <div className="flex items-center gap-1">
+                    <span>Organisme Suggéré (Matching)</span>
+                    <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                  </div>
+                </th>
                 <th scope="col" className="py-3.5 px-4 cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort('expires_at')}>
                   <div className="flex items-center gap-1">
                     <span>Expiration</span>
@@ -471,22 +600,17 @@ export default function ProducerCertificationsList() {
                     <ArrowUpDown className="w-3 h-3 text-gray-400" />
                   </div>
                 </th>
-                <th scope="col" className="py-3.5 px-4 cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort('updated_at')}>
-                  <div className="flex items-center gap-1">
-                    <span>Dernière action</span>
-                    <ArrowUpDown className="w-3 h-3 text-gray-400" />
-                  </div>
-                </th>
-                <th scope="col" className="py-3.5 px-4 sm:px-6 text-right">Actions</th>
+                <th scope="col" className="py-3.5 px-4 sm:px-6 text-right">Action Rapide</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {/* État Loading : Skeleton de 5 lignes */}
+              {/* État Loading */}
               {isLoading && (
                 <>
                   {[1, 2, 3, 4, 5].map(i => (
                     <tr key={i} className="animate-pulse">
-                      <td className="py-4 px-4 sm:px-6">
+                      <td className="py-4 px-3"><div className="w-4 h-4 bg-gray-200 rounded mx-auto" /></td>
+                      <td className="py-4 px-4 sm:px-5">
                         <div className="h-4 bg-gray-200 rounded w-28 mb-1.5" />
                         <div className="h-3 bg-gray-100 rounded w-16" />
                       </td>
@@ -495,21 +619,12 @@ export default function ProducerCertificationsList() {
                         <div className="h-3 bg-gray-100 rounded w-14" />
                       </td>
                       <td className="py-4 px-4">
-                        <div className="h-4 bg-gray-200 rounded w-28 mb-1.5" />
+                        <div className="h-4 bg-gray-200 rounded w-36 mb-1.5" />
                         <div className="h-3 bg-gray-100 rounded w-20" />
                       </td>
-                      <td className="py-4 px-4">
-                        <div className="h-4 bg-gray-200 rounded w-20" />
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="h-6 bg-gray-200 rounded-full w-24" />
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="h-4 bg-gray-200 rounded w-20" />
-                      </td>
-                      <td className="py-4 px-4 sm:px-6 text-right">
-                        <div className="h-8 bg-gray-200 rounded-xl w-24 ml-auto" />
-                      </td>
+                      <td className="py-4 px-4"><div className="h-4 bg-gray-200 rounded w-20" /></td>
+                      <td className="py-4 px-4"><div className="h-6 bg-gray-200 rounded-full w-24" /></td>
+                      <td className="py-4 px-4 sm:px-6 text-right"><div className="h-8 bg-gray-200 rounded-xl w-24 ml-auto" /></td>
                     </tr>
                   ))}
                 </>
@@ -524,7 +639,7 @@ export default function ProducerCertificationsList() {
                       Aucune certification ne correspond aux filtres appliqués
                     </h3>
                     <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
-                      Modifiez ou réinitialisez vos critères de recherche pour afficher les certifications des producteurs.
+                      Modifiez ou réinitialisez vos critères de recherche pour afficher les certifications.
                     </p>
                     {hasActiveFilters && (
                       <button
@@ -545,15 +660,29 @@ export default function ProducerCertificationsList() {
                 sortedCertifications.map(cert => {
                   const producerCountry = cert.producer?.country || cert.country_of_issue || '';
                   const flag = COUNTRY_FLAGS[producerCountry] || '🌐';
+                  const isSelected = selectedIds.has(cert.id);
 
                   return (
                     <tr
                       key={cert.id}
                       onClick={() => navigate(`/admin/certifications/producers/${cert.id}`)}
-                      className="hover:bg-gray-50/80 cursor-pointer transition-colors group"
+                      className={`hover:bg-gray-50/80 cursor-pointer transition-colors group ${
+                        isSelected ? 'bg-emerald-50/40' : ''
+                      }`}
                     >
+                      {/* Col 0 : Checkbox */}
+                      <td className="py-3.5 px-3 text-center" onClick={e => toggleSelectId(cert.id, e)}>
+                        <div className="flex items-center justify-center">
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
+                          )}
+                        </div>
+                      </td>
+
                       {/* Col 1 : Producteur */}
-                      <td className="py-3.5 px-4 sm:px-6">
+                      <td className="py-3.5 px-4 sm:px-5">
                         <div className="font-bold text-gray-900 group-hover:text-brand-600 transition-colors">
                           {cert.producer?.name || 'Producteur inconnu'}
                         </div>
@@ -563,36 +692,38 @@ export default function ProducerCertificationsList() {
                         </div>
                       </td>
 
-                      {/* Col 2 : Certification */}
+                      {/* Col 2 : Standard Déclaré */}
                       <td className="py-3.5 px-4">
                         <div className="font-mono text-xs font-semibold text-gray-900">
-                          {cert.certificate_number || 'Sans numéro'}
+                          {cert.certificate_number || 'Sans N°'}
                         </div>
-                        <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded mt-1">
+                        <span className="inline-block text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md mt-1">
                           {cert.certification_type}
                         </span>
                       </td>
 
-                      {/* Col 3 : Organisme */}
+                      {/* Col 3 : Organisme Suggéré & Badge Matching */}
                       <td className="py-3.5 px-4">
-                        {cert.certification_body ? (
-                          <div>
-                            <div className="font-medium text-gray-900 flex items-center gap-1">
-                              <Building2 className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                              <span className="truncate max-w-[180px]">{cert.certification_body.name}</span>
+                        {cert.matchedBody ? (
+                          <div className="space-y-1">
+                            <div className="font-semibold text-gray-900 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                              <span className="truncate max-w-[200px]">{cert.matchedBody.name}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="text-[10px] text-gray-500">{cert.certification_body.region}</span>
-                              <ChannelBadge
-                                channel={cert.certification_body.api_endpoint ? 'api' : cert.certification_body.email_contact ? 'email' : 'manual'}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <MatchingQualityBadge
+                                quality={cert.matchQuality || 'regional'}
+                                score={cert.matchScore || 85}
+                                reasons={cert.matchReasons}
                                 size="sm"
                               />
+                              <span className="text-[10px] text-gray-500">
+                                📍 {cert.matchedBody.country}
+                              </span>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-orange-700 bg-orange-50 px-2 py-0.5 rounded font-medium border border-orange-200">
-                            Non associé
-                          </span>
+                          <MatchingQualityBadge quality="none" score={0} size="sm" />
                         )}
                       </td>
 
@@ -616,14 +747,20 @@ export default function ProducerCertificationsList() {
                         <CertificationStatusBadge status={cert.status} size="sm" />
                       </td>
 
-                      {/* Col 6 : Dernière action */}
-                      <td className="py-3.5 px-4 text-xs text-gray-500">
-                        {formatDate(cert.updated_at)}
-                      </td>
-
-                      {/* Col 7 : Actions */}
+                      {/* Col 6 : Actions Rapides */}
                       <td className="py-3.5 px-4 sm:px-6 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Bouton de contact direct avec organisme ciblé */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenSmartContact(cert, e)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold shadow-2xs transition-all hover:scale-105"
+                            title="Contacter directement l'organisme certificateur suggéré"
+                          >
+                            <Send className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Contacter</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => navigate(`/admin/certifications/producers/${cert.id}`)}
@@ -633,20 +770,6 @@ export default function ProducerCertificationsList() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-
-                          {/* Bouton de vérification inline compact */}
-                          {cert.status !== 'verified' && (
-                            <OneClickVerificationButton
-                              certificationId={cert.id}
-                              certificationBody={cert.certification_body || null}
-                              currentStatus={cert.status}
-                              adminId={profile?.id || ''}
-                              size="sm"
-                              onVerificationComplete={() => {
-                                loadData();
-                              }}
-                            />
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -682,7 +805,6 @@ export default function ProducerCertificationsList() {
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              {/* Boutons pages */}
               {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
                 let p = i + 1;
                 if (totalPages > 5 && queryPage > 3) {
@@ -699,7 +821,7 @@ export default function ProducerCertificationsList() {
                     onClick={() => handlePageChange(p)}
                     className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
                       isActive
-                        ? 'bg-brand-600 text-white shadow-xs'
+                        ? 'bg-brand-600 text-white shadow-2xs'
                         : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
                     }`}
                   >
@@ -721,6 +843,22 @@ export default function ProducerCertificationsList() {
           </div>
         )}
       </section>
+
+      {/* Modale de Contact & Redirection Intelligente */}
+      {activeContactCert && (
+        <UniversalContactModal
+          isOpen={contactModalOpen}
+          onClose={() => {
+            setContactModalOpen(false);
+            setActiveContactCert(null);
+          }}
+          body={activeContactCert.matchedBody || null}
+          certificateNumber={activeContactCert.certificate_number || 'N/A'}
+          producerName={activeContactCert.producer?.name || 'Producteur Partenaire'}
+          producerCountry={activeContactCert.producer?.country || activeContactCert.country_of_issue || 'France'}
+          declaredStandard={activeContactCert.certification_type || activeContactCert.certification_standard?.name || 'Bio'}
+        />
+      )}
     </div>
   );
 }
