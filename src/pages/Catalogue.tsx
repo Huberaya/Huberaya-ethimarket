@@ -28,6 +28,7 @@ import { SearchResultsGrid } from '../components/search/SearchResultsGrid';
 import { SearchResultsTable } from '../components/search/SearchResultsTable';
 import { SearchResultsMap } from '../components/search/SearchResultsMap';
 import { ProductComparisonDrawer } from '../components/search/ProductComparisonDrawer';
+import { SavedSearchesModal } from '../components/search/SavedSearchesModal';
 import {
   executeIntelligentSearch,
   SearchResultItem,
@@ -74,6 +75,7 @@ export default function Catalogue() {
   // Multi-view states
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'map'>('grid');
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [isSavedSearchOpen, setIsSavedSearchOpen] = useState(false);
 
   // Comparison & Alternatives state
   const [comparedProducts, setComparedProducts] = useState<Product[]>([]);
@@ -310,7 +312,7 @@ export default function Catalogue() {
               filters={filters}
               onFilterChange={setFilters}
               onResetFilters={handleResetFilters}
-              onSaveSearchModalOpen={() => alert('Recherche enregistrée avec succès dans vos alertes !')}
+              onSaveSearchModalOpen={() => setIsSavedSearchOpen(true)}
               catalogProducts={rawProducts}
               totalResultsCount={searchResults.length}
               isOpenMobile={isMobileFiltersOpen}
@@ -453,6 +455,19 @@ export default function Catalogue() {
         selectedProducts={comparedProducts}
         onRemoveProduct={id => setComparedProducts(prev => prev.filter(p => p.id !== id))}
         onClearAll={() => setComparedProducts([])}
+      />
+
+      {/* Saved Searches & Alerts Modal */}
+      <SavedSearchesModal
+        isOpen={isSavedSearchOpen}
+        onClose={() => setIsSavedSearchOpen(false)}
+        currentQuery={query}
+        currentFilters={filters}
+        onApplySavedSearch={(newQuery, newFilters) => {
+          setQuery(newQuery);
+          setFilters(newFilters);
+          runSearch(newQuery, newFilters);
+        }}
       />
 
       <Footer />
