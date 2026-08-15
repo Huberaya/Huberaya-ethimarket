@@ -2,7 +2,7 @@
 // Side-by-side Product Comparator Modal & Floating Bar (up to 5 products)
 
 import React, { useState } from 'react';
-import { X, Scale, Check, Trophy, Sparkles, ExternalLink, ArrowRight } from 'lucide-react';
+import { X, Scale, Trophy, Sparkles, ExternalLink, ArrowRight } from 'lucide-react';
 import { Product } from '../../lib/supabase';
 import { generateComparisonReport } from '../../lib/alternativeProductsEngine';
 import { Link } from 'react-router-dom';

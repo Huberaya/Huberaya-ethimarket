@@ -2,7 +2,7 @@
 // Prominent Natural Language Search Bar with animated placeholders, live parsing badges & voice input
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, SlidersHorizontal, Sparkles, CornerDownLeft } from 'lucide-react';
+import { Search, X, SlidersHorizontal, CornerDownLeft } from 'lucide-react';
 import { VoiceSearchButton } from './VoiceSearchButton';
 import { SearchAutocompleteDropdown } from './SearchAutocompleteDropdown';
 import { parseNaturalLanguageQuery, ParsedSearchQuery } from '../../lib/naturalLanguageSearchService';

@@ -5,13 +5,11 @@ import React, { useMemo } from 'react';
 import { LeafletMap } from '../LeafletMap';
 import { SearchResultItem } from '../../lib/productSearchEngine';
 import { Product } from '../../lib/supabase';
-import { ShieldCheck, ArrowUpRight, Scale } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 interface SearchResultsMapProps {
   results: SearchResultItem[];
-  selectedComparisonIds: string[];
-  onToggleCompare: (product: Product) => void;
+  selectedComparisonIds?: string[];
+  onToggleCompare?: (product: Product) => void;
 }
 
 // Fallback country coordinates if no exact GPS is given
@@ -31,12 +29,8 @@ const COUNTRY_COORDINATES: Record<string, [number, number]> = {
 };
 
 export const SearchResultsMap: React.FC<SearchResultsMapProps> = ({
-  results,
-  selectedComparisonIds,
-  onToggleCompare
+  results
 }) => {
-  const [selectedPinProduct, setSelectedPinProduct] = React.useState<SearchResultItem | null>(null);
-
   const markers = useMemo(() => {
     return results.map((prod, index) => {
       let lat = 0;

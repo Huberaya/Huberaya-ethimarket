@@ -110,6 +110,11 @@ export function scoreProductClientSide(
       matchReasons.push('Correspondance titre');
     }
 
+    if (normProducer && parsed.rawQuery.toLowerCase().includes(normProducer.toLowerCase())) {
+      score += 25;
+      matchReasons.push(`Producteur: ${product.producers?.company_name}`);
+    }
+
     if (parsed.productTypeCanonical && (normName.includes(normalizeText(parsed.productTypeCanonical)) || normType.includes(normalizeText(parsed.productTypeCanonical)))) {
       score += 35;
       matchReasons.push(`Type: ${parsed.productTypeCanonical}`);
@@ -168,7 +173,7 @@ export function scoreProductClientSide(
 
   // 5. Gender Match
   if (parsed.gender || (filters?.gender && filters.gender !== 'all')) {
-    const targetG = parsed.gender || (filters?.gender as any);
+    const targetG = parsed.gender || (filters?.gender as 'homme' | 'femme' | 'unisexe' | 'enfant' | 'bebe');
     const prodG = product.target_gender || product.attributes?.gender || 'unisexe';
     if (prodG === targetG || prodG === 'unisexe') {
       score += 15;
@@ -255,8 +260,8 @@ export async function executeIntelligentSearch(
     });
 
     if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
-      searchResults = rpcData.map((item: any) => {
-        const { score, matchReasons } = scoreProductClientSide(item as Product, parsed, filters);
+      searchResults = (rpcData as unknown as Product[]).map((item) => {
+        const { score, matchReasons } = scoreProductClientSide(item, parsed, filters);
         return {
           ...item,
           searchScore: score,

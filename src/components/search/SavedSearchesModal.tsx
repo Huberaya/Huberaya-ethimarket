@@ -1,7 +1,7 @@
 // src/components/search/SavedSearchesModal.tsx
 // Modal for saving searches, managing buyer alerts, and reloading previous search configurations
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bookmark,
   Bell,
@@ -39,19 +39,17 @@ export const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
   const [savedList, setSavedList] = useState<SavedSearch[]>([]);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  const loadSearches = useCallback(async () => {
+    const list = await SavedSearchesService.getSavedSearches(userId);
+    setSavedList(list);
+  }, [userId]);
+
   useEffect(() => {
     if (isOpen) {
       loadSearches();
-      if (!title) {
-        setTitle(currentQuery ? `Recherche : ${currentQuery}` : 'Veille catalogue sur-mesure');
-      }
+      setTitle(currentQuery ? `Recherche : ${currentQuery}` : 'Veille catalogue sur-mesure');
     }
-  }, [isOpen, currentQuery]);
-
-  const loadSearches = async () => {
-    const list = await SavedSearchesService.getSavedSearches(userId);
-    setSavedList(list);
-  };
+  }, [isOpen, currentQuery, loadSearches]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,7 +216,7 @@ export const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                               type="radio"
                               name="frequency"
                               checked={frequency === opt.id}
-                              onChange={() => setFrequency(opt.id as any)}
+                              onChange={() => setFrequency(opt.id as 'instant' | 'daily' | 'weekly' | 'none')}
                               className="w-3.5 h-3.5 accent-emerald-600"
                             />
                           </div>
@@ -297,7 +295,7 @@ export const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                         <Bell className="w-3 h-3 text-neutral-400" />
                         <select
                           value={item.alert_frequency}
-                          onChange={e => handleUpdateFreq(item.id, e.target.value as any)}
+                          onChange={e => handleUpdateFreq(item.id, e.target.value as 'instant' | 'daily' | 'weekly' | 'none')}
                           className="text-[11px] bg-neutral-100 border-none rounded px-2 py-0.5 font-medium text-neutral-700 focus:ring-1 focus:ring-emerald-500"
                         >
                           <option value="weekly">Alerte : Hebdomadaire</option>

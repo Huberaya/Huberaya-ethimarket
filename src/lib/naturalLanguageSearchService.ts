@@ -127,11 +127,11 @@ export function parseNaturalLanguageQuery(query: string): ParsedSearchQuery {
   let maxPrice: number | undefined;
   let currency: string | undefined = 'EUR';
 
-  if (/(\$|dollar|dollars)/i.test(query)) currency = 'USD';
-  if (/(\£|livre|gbp)/i.test(query)) currency = 'GBP';
+  if (/([$]|dollar|dollars)/i.test(query)) currency = 'USD';
+  if (/([£]|livre|gbp)/i.test(query)) currency = 'GBP';
 
   // Pattern: "moins de 15 €", "< 15€", "max 15€", "maximum 30€", "jusqu'à 50€"
-  const maxPriceMatch = query.match(/(?:moins\s+de|<|max(?:imum)?|inf[ée]rieur\s+à|jusqu['\s]à)\s*(\d+(?:[.,]\d+)?)\s*(?:€|eur|euros|\$|\£)?/i);
+  const maxPriceMatch = query.match(/(?:moins\s+de|<|max(?:imum)?|inf[ée]rieur\s+à|jusqu['\s]à)\s*(\d+(?:[.,]\d+)?)\s*(?:€|eur|euros|\$|[£])?/i);
   if (maxPriceMatch) {
     maxPrice = parseFloat(maxPriceMatch[1].replace(',', '.'));
     extractedKeywords.push(maxPriceMatch[0]);
@@ -139,7 +139,7 @@ export function parseNaturalLanguageQuery(query: string): ParsedSearchQuery {
   }
 
   // Pattern: "plus de 20 €", "> 20€", "min 20€", "minimum 20€", "à partir de 20€"
-  const minPriceMatch = query.match(/(?:plus\s+de|>|min(?:imum)?|sup[ée]rieur\s+à|[àa]\s+partir\s+de)\s*(\d+(?:[.,]\d+)?)\s*(?:€|eur|euros|\$|\£)?/i);
+  const minPriceMatch = query.match(/(?:plus\s+de|>|min(?:imum)?|sup[ée]rieur\s+à|[àa]\s+partir\s+de)\s*(\d+(?:[.,]\d+)?)\s*(?:€|eur|euros|\$|[£])?/i);
   if (minPriceMatch) {
     minPrice = parseFloat(minPriceMatch[1].replace(',', '.'));
     extractedKeywords.push(minPriceMatch[0]);
@@ -240,7 +240,7 @@ export function parseNaturalLanguageQuery(query: string): ParsedSearchQuery {
     for (const syn of item.synonyms) {
       const regex = new RegExp(`\\b${normalizeText(syn)}\\b`, 'i');
       if (regex.test(normalizeText(workingQuery))) {
-        gender = item.id as any;
+        gender = item.id as 'homme' | 'femme' | 'unisexe' | 'enfant' | 'bebe';
         extractedKeywords.push(syn);
         break;
       }
@@ -253,7 +253,7 @@ export function parseNaturalLanguageQuery(query: string): ParsedSearchQuery {
   let manufacturingCountry: string | undefined;
   
   // Specific check for "fabriqué en [Pays]" or "made in [Country]"
-  const madeInMatch = query.match(/(?:fabriqu[ée]\s+en|made\s+in|origine)\s+([a-zA-Z\u00C0-\u017F\-]+)/i);
+  const madeInMatch = query.match(/(?:fabriqu[ée]\s+en|made\s+in|origine)\s+([a-zA-Z\u00C0-\u017F-]+)/i);
   if (madeInMatch) {
     const rawTarget = normalizeText(madeInMatch[1]);
     for (const c of COUNTRIES_DICT) {

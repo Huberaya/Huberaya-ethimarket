@@ -12,8 +12,7 @@ import {
   Leaf,
   Users,
   CreditCard,
-  Award,
-  Check
+  Award
 } from 'lucide-react';
 import { StructuredFilters } from '../../lib/productSearchEngine';
 import { Product } from '../../lib/supabase';

@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Scale, Leaf, ArrowUpRight, Sparkles, Check } from 'lucide-react';
+import { ShieldCheck, Scale, Leaf, ArrowUpRight, Sparkles } from 'lucide-react';
 import { SearchResultItem } from '../../lib/productSearchEngine';
 import { Product } from '../../lib/supabase';
 

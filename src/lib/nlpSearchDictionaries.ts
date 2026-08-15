@@ -125,10 +125,11 @@ export const ETHICAL_FLAGS_DICT = {
 // 7. COMPARATIVE & INTENT TRIGGERS
 export const INTENT_PATTERNS = {
   alternative: [
-    /(?:trouve(?:-moi)?|cherche|montre(?:-moi)?|quelle est|donne(?:-moi)?)\s+(?:une\s+)?alternative\s+(?:à|au|aux|pour|de)\s+([^,]+)/i,
-    /alternative\s+(?:à|au|aux|de)\s+([^,]+)/i,
+    /(?:trouve(?:-moi)?|cherche|montre(?:-moi)?|quelle est|donne(?:-moi)?)\s+(?:une\s+)?alternative\s+(?:[a-zÀ-ÿ-]+\s+)*(?:à|au|aux|pour|de)\s+([^,]+)/i,
+    /alternative\s+(?:[a-zÀ-ÿ-]+\s+)*(?:à|au|aux|pour|de)\s+([^,]+)/i,
     /remplacer\s+([^,]+)/i,
-    /équivalent\s+(?:à|au|aux|de)\s+([^,]+)/i
+    /équivalent\s+(?:[a-zÀ-ÿ-]+\s+)*(?:à|au|aux|pour|de)\s+([^,]+)/i,
+    /substitut\s+(?:[a-zÀ-ÿ-]+\s+)*(?:à|au|aux|pour|de)\s+([^,]+)/i
   ],
   comparison: [
     /compare(?:r)?\s+(?:les|la|le)?\s*([^,]+)/i,
@@ -142,12 +143,12 @@ export const INTENT_PATTERNS = {
     /transparence\s+totale/i
   ],
   cheaper: [
-    /moins\s+cher/i,
+    /moins\s+ch[eè]re?/i,
     /plus\s+[ée]conomique/i,
     /meilleur\s+prix/i,
     /cheaper/i,
     /m[aá]s\s+barato/i,
-    /co[uû]te\s+moins\s+cher/i
+    /co[uû]te\s+moins\s+ch[eè]re?/i
   ],
   lower_carbon: [
     /moins\s+de\s+co2/i,

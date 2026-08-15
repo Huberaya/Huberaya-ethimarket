@@ -2,7 +2,7 @@
 // Real-time intelligent search suggestions & autocomplete dropdown
 
 import React from 'react';
-import { Search, Sparkles, History, ArrowUpRight, Award, ShieldCheck } from 'lucide-react';
+import { Search, Sparkles, History, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { Product } from '../../lib/supabase';
 import { ParsedSearchQuery } from '../../lib/naturalLanguageSearchService';
 

@@ -8,20 +8,13 @@ import {
   LayoutList,
   Sparkles,
   MapPin,
-  Clock,
-  ArrowUpDown,
-  RotateCcw,
-  SlidersHorizontal,
-  ChevronLeft,
-  ChevronRight,
-  ShieldCheck,
-  Bookmark
+  ArrowUpDown
 } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SEOHead from '../components/SEOHead';
 import { ProductCardSkeleton } from '../components/Skeleton';
-import { supabase, type Product, type Category } from '../lib/supabase';
+import { supabase, type Product } from '../lib/supabase';
 import { IntelligentSearchBar } from '../components/search/IntelligentSearchBar';
 import { AdvancedFiltersSidebar } from '../components/search/AdvancedFiltersSidebar';
 import { SearchResultsGrid } from '../components/search/SearchResultsGrid';
@@ -51,7 +44,6 @@ export default function Catalogue() {
 
   // Raw data from DB
   const [rawProducts, setRawProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter state
@@ -94,15 +86,6 @@ export default function Catalogue() {
 
         if (prodData) {
           setRawProducts(prodData as Product[]);
-        }
-
-        const { data: catData } = await supabase
-          .from('categories')
-          .select('*')
-          .order('name');
-
-        if (catData) {
-          setCategories(catData);
         }
       } catch (err) {
         console.error('Error fetching catalog data:', err);
@@ -350,7 +333,7 @@ export default function Catalogue() {
                   <ArrowUpDown className="w-3.5 h-3.5" />
                   <select
                     value={filters.sortBy || 'relevance'}
-                    onChange={e => setFilters({ ...filters, sortBy: e.target.value as any })}
+                    onChange={e => setFilters({ ...filters, sortBy: e.target.value as StructuredFilters['sortBy'] })}
                     className="bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     {SORT_OPTIONS.map(opt => (

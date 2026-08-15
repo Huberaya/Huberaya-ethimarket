@@ -2,7 +2,35 @@
 // 100% Free Browser-Native Web Speech API Voice Recognition
 
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Loader2 } from 'lucide-react';
+import { Mic } from 'lucide-react';
+
+interface SpeechRecognitionItem {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: {
+    [index: number]: SpeechRecognitionItem;
+  };
+}
+
+interface SpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: () => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
 interface VoiceSearchButtonProps {
   onTranscript: (transcript: string) => void;
@@ -16,17 +44,24 @@ export const VoiceSearchButton: React.FC<VoiceSearchButtonProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
+  const getRecognitionConstructor = (): SpeechRecognitionConstructor | null => {
+    const win = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    return win.SpeechRecognition || win.webkitSpeechRecognition || null;
+  };
+
   useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getRecognitionConstructor();
     if (!SpeechRecognition) {
       setIsSupported(false);
     }
   }, []);
 
   const toggleListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getRecognitionConstructor();
     if (!SpeechRecognition) {
-      alert('La recherche vocale n\'est pas supportée par votre navigateur actuel.');
       return;
     }
 
@@ -45,8 +80,8 @@ export const VoiceSearchButton: React.FC<VoiceSearchButtonProps> = ({
         setIsListening(true);
       };
 
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const transcript = event.results[0]?.[0]?.transcript;
         if (transcript) {
           onTranscript(transcript);
         }

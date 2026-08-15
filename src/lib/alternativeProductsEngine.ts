@@ -110,6 +110,12 @@ export function findAlternativeProducts(
     if (candTrace) matchScore += 10;
     if (scoreDiff > 0) matchScore += 10;
 
+    // Apply parsed query priorities if specified
+    if (parsedQuery?.cheaperPriority && priceDiff < 0) matchScore += 20;
+    if (parsedQuery?.lowerCarbonPriority && co2Reduction > 0) matchScore += 20;
+    if (parsedQuery?.fullTraceability && candTrace) matchScore += 20;
+    if (parsedQuery?.manufacturingCountry && candidate.country === parsedQuery.manufacturingCountry) matchScore += 15;
+
     // Reason synthesis
     let recommendationReason = 'Alternative équivalente';
     if (priceDiff < 0 && candTrace) {

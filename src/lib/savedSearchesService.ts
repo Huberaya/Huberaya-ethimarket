@@ -1,7 +1,7 @@
 // src/lib/savedSearchesService.ts
 // Service for managing saved searches, buyer watchlists, and automated new-product email alerts
 
-import { supabase, Product } from './supabase';
+import { supabase } from './supabase';
 import { StructuredFilters } from './productSearchEngine';
 
 export interface SavedSearch {
