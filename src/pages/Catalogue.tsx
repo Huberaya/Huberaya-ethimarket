@@ -26,6 +26,7 @@ import { IntelligentSearchBar } from '../components/search/IntelligentSearchBar'
 import { AdvancedFiltersSidebar } from '../components/search/AdvancedFiltersSidebar';
 import { SearchResultsGrid } from '../components/search/SearchResultsGrid';
 import { SearchResultsTable } from '../components/search/SearchResultsTable';
+import { SearchResultsMap } from '../components/search/SearchResultsMap';
 import { ProductComparisonDrawer } from '../components/search/ProductComparisonDrawer';
 import {
   executeIntelligentSearch,
@@ -71,7 +72,7 @@ export default function Catalogue() {
   });
 
   // Multi-view states
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'map'>('grid');
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
   // Comparison & Alternatives state
@@ -380,6 +381,16 @@ export default function Catalogue() {
                   >
                     <LayoutList className="w-4 h-4" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('map')}
+                    className={`p-1.5 rounded-lg transition ${
+                      viewMode === 'map' ? 'bg-white shadow-sm text-emerald-700 font-bold' : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                    title="Vue carte géographique"
+                  >
+                    <MapPin className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -399,8 +410,14 @@ export default function Catalogue() {
                   onToggleCompare={handleToggleCompare}
                   onSearchAlternative={handleSearchAlternativesForProduct}
                 />
-              ) : (
+              ) : viewMode === 'table' ? (
                 <SearchResultsTable
+                  results={searchResults}
+                  selectedComparisonIds={comparedProducts.map(p => p.id)}
+                  onToggleCompare={handleToggleCompare}
+                />
+              ) : (
+                <SearchResultsMap
                   results={searchResults}
                   selectedComparisonIds={comparedProducts.map(p => p.id)}
                   onToggleCompare={handleToggleCompare}
