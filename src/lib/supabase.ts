@@ -613,16 +613,31 @@ export type CertificationVerificationLog = {
   admin_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
 };
 
+export type TemplateVersionSnapshot = {
+  version: number;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  saved_at: string;
+  modified_by: string | null;
+};
+
 export type CertificationMessageTemplate = {
   id: string;
-  name: string;
+  title?: string;
+  name: string; // Rétrocompatibilité : name ou title
   language: string;
   channel: VerificationChannel;
   subject: string | null;
   body: string;
   variables: string[];
   is_default: boolean;
+  version?: number;
+  previous_version?: TemplateVersionSnapshot | null;
+  last_modified_by?: string | null;
+  last_modified_by_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
   created_by: string | null;
+  created_by_profile?: Pick<Profile, 'id' | 'first_name' | 'last_name' | 'email'> | null;
   created_at: string;
   updated_at: string;
 };

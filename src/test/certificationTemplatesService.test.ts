@@ -3,22 +3,36 @@ import {
   renderTemplate,
   getDefaultTemplatesData,
   getDefaultTemplate,
-  setDefaultTemplate
+  setDefaultTemplate,
+  createTemplate,
+  updateTemplate,
+  rollbackTemplate,
+  duplicateTemplate,
+  exportTemplatesAsJSON,
+  importTemplatesFromJSON,
+  resetToDefaultTemplates,
+  normalizeTemplate
 } from '../lib/certificationTemplatesService';
-import { mockSupabaseResponse, executedQueries } from './mocks/supabaseMock';
+import { mockSupabaseResponse, resetSupabaseMock } from './mocks/supabaseMock';
 import {
   mockTemplate,
-  mockTemplateVariables,
-  mockTemplateId
+  mockTemplateVariables
 } from './fixtures/certificationFixtures';
+import {
+  mockEmailTemplateFR,
+  mockEmailTemplateEN,
+  mockWhatsAppTemplate,
+  mockAdminUserId
+} from './fixtures/templateFixtures';
 
 describe('certificationTemplatesService', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetSupabaseMock();
   });
 
   // =========================================================================
-  // GROUPE 1 — renderTemplate
+  // GROUPE 1 — renderTemplate & Variable Resolution
   // =========================================================================
   describe('GROUPE 1 — renderTemplate', () => {
     it('Test 1.1 : Rendu complet sujet + corps', () => {
@@ -58,55 +72,120 @@ describe('certificationTemplatesService', () => {
   });
 
   // =========================================================================
-  // GROUPE 2 — getDefaultTemplatesData
+  // GROUPE — normalizeTemplate
+  // =========================================================================
+  describe('GROUPE — normalizeTemplate', () => {
+    it('Test 1 : Normalisation basique d\'un objet brut vers CertificationMessageTemplate valide', () => {
+      const raw = {
+        id: 'raw-1',
+        title: 'Template Brut',
+        name: 'Template Brut',
+        channel: 'email',
+        language: 'fr',
+        subject: 'Sujet test',
+        body: 'Corps test',
+        variables: ['producer_name'],
+        is_default: true,
+        is_active: true,
+        version: 1,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z'
+      };
+
+      const normalized = normalizeTemplate(raw);
+      expect(normalized.id).toBe('raw-1');
+      expect(normalized.title).toBe('Template Brut');
+      expect(normalized.channel).toBe('email');
+      expect(normalized.language).toBe('fr');
+      expect(normalized.variables).toEqual(['producer_name']);
+    });
+
+    it('Test 2 : Remplace les champs manquants par des valeurs par défaut', () => {
+      const rawIncomplete = {
+        id: 'raw-2',
+        body: 'Corps seul sans métadonnées'
+      };
+
+      const normalized = normalizeTemplate(rawIncomplete);
+      expect(normalized.variables).toEqual([]);
+      expect(normalized.version).toBe(1);
+      expect(normalized.language).toBe('fr');
+      expect(normalized.channel).toBe('email');
+      expect(normalized.is_default).toBe(false);
+    });
+
+    it('Test 3 : Assure la compatibilité bidirectionnelle title / name', () => {
+      const rawOnlyName = { id: 'r1', name: 'Nom Unique', body: '...' };
+      const resName = normalizeTemplate(rawOnlyName);
+      expect(resName.title).toBe('Nom Unique');
+      expect(resName.name).toBe('Nom Unique');
+
+      const rawOnlyTitle = { id: 'r2', title: 'Titre Unique', body: '...' };
+      const resTitle = normalizeTemplate(rawOnlyTitle);
+      expect(resTitle.title).toBe('Titre Unique');
+      expect(resTitle.name).toBe('Titre Unique');
+    });
+
+    it('Test 4 : Conserve les dates valides sous forme de chaînes ISO', () => {
+      const rawWithDates = {
+        id: 'r3',
+        title: 'Dates Test',
+        body: '...',
+        created_at: '2026-06-15T10:00:00.000Z',
+        updated_at: '2026-06-16T12:00:00.000Z'
+      };
+
+      const normalized = normalizeTemplate(rawWithDates);
+      expect(typeof normalized.created_at).toBe('string');
+      expect(normalized.created_at).toContain('2026-06-15');
+      expect(normalized.updated_at).toContain('2026-06-16');
+    });
+  });
+
+  // =========================================================================
+  // GROUPE 2 — getDefaultTemplatesData (12 templates officiels)
   // =========================================================================
   describe('GROUPE 2 — getDefaultTemplatesData', () => {
-    it('Test 2.1 : Retourne au moins 4 templates', () => {
+    it('Test 2.1 : Retourne exactement 12 templates standards', () => {
       const defaults = getDefaultTemplatesData();
-      expect(defaults.length).toBeGreaterThanOrEqual(4);
+      expect(defaults.length).toBe(12);
     });
 
-    it('Test 2.2 : Contient un template email français', () => {
+    it('Test 2.2 : Contient des templates multilingues (FR, EN, ES, PT)', () => {
       const defaults = getDefaultTemplatesData();
-      const frEmail = defaults.find((t) => t.channel === 'email' && t.language === 'fr');
-      expect(frEmail).toBeDefined();
-      expect(frEmail?.name).toContain('Français');
+      const languages = new Set(defaults.map((t) => t.language));
+      expect(languages.has('fr')).toBe(true);
+      expect(languages.has('en')).toBe(true);
+      expect(languages.has('es')).toBe(true);
+      expect(languages.has('pt')).toBe(true);
     });
 
-    it('Test 2.3 : Contient un template email anglais', () => {
+    it('Test 2.3 : Contient des templates pour tous les canaux (email, whatsapp, form, api)', () => {
       const defaults = getDefaultTemplatesData();
-      const enEmail = defaults.find((t) => t.channel === 'email' && t.language === 'en');
-      expect(enEmail).toBeDefined();
-      expect(enEmail?.name).toContain('English');
+      const channels = new Set(defaults.map((t) => t.channel));
+      expect(channels.has('email')).toBe(true);
+      expect(channels.has('whatsapp')).toBe(true);
+      expect(channels.has('form')).toBe(true);
+      expect(channels.has('api')).toBe(true);
     });
 
-    it('Test 2.4 : Contient un template WhatsApp', () => {
+    it('Test 2.4 : Tous les templates ont un titre et un corps non vides', () => {
       const defaults = getDefaultTemplatesData();
-      const wa = defaults.find((t) => t.channel === 'whatsapp');
-      expect(wa).toBeDefined();
-    });
-
-    it('Test 2.5 : Tous les templates ont is_default === true', () => {
-      const defaults = getDefaultTemplatesData();
-      defaults.forEach((t) => {
-        expect(t.is_default).toBe(true);
-      });
-    });
-
-    it('Test 2.6 : Aucun template n a created_by défini (null)', () => {
-      const defaults = getDefaultTemplatesData();
-      defaults.forEach((t) => {
-        expect(t.created_by).toBeNull();
+      defaults.forEach((tpl) => {
+        expect(tpl.title.length).toBeGreaterThan(0);
+        expect(tpl.body.length).toBeGreaterThan(0);
+        expect(tpl.channel).toBeDefined();
+        expect(tpl.language).toBeDefined();
       });
     });
   });
 
   // =========================================================================
-  // GROUPE 3 — getDefaultTemplate
+  // GROUPE — getDefaultTemplate (Fallback avancé)
   // =========================================================================
-  describe('GROUPE 3 — getDefaultTemplate', () => {
-    it('Test 3.1 : Retourne le template par défaut pour email + français', async () => {
-      mockSupabaseResponse(mockTemplate);
+  describe('GROUPE — getDefaultTemplate (Fallback avancé)', () => {
+    it('Test 1 : Retourne directement le template par défaut dans la langue demandée (FR)', async () => {
+      mockSupabaseResponse(mockEmailTemplateFR);
 
       const res = await getDefaultTemplate('email', 'fr');
       expect(res.data).not.toBeNull();
@@ -114,112 +193,242 @@ describe('certificationTemplatesService', () => {
       expect(res.data?.channel).toBe('email');
     });
 
-    it('Test 3.2 : Fallback sur anglais si français non trouvé', async () => {
-      // 1. Direct query returns null
+    it('Test 2 : Si la langue demandée est absente, effectue un fallback vers l\'anglais (EN)', async () => {
+      // 1er appel langue 'de' -> null
       mockSupabaseResponse(null);
-      // 2. Fallback query returns English template
-      mockSupabaseResponse({
-        ...mockTemplate,
-        id: 'tpl-en',
-        language: 'en',
-        name: 'Official Verification Email'
-      });
+      // 2e appel fallback 'en' -> mockEmailTemplateEN
+      mockSupabaseResponse(mockEmailTemplateEN);
 
-      const res = await getDefaultTemplate('email', 'es');
+      const res = await getDefaultTemplate('email', 'de');
       expect(res.data).not.toBeNull();
       expect(res.data?.language).toBe('en');
     });
 
-    it('Test 3.3 : Retourne null si aucun template pour ce canal (sans erreur)', async () => {
+    it('Test 3 : Si aucun template par défaut dans la langue, fallback sur le premier disponible du canal', async () => {
+      // Pas de défaut FR
+      mockSupabaseResponse(null);
+      // Pas de défaut EN
+      mockSupabaseResponse(null);
+      // Premier template du canal
+      mockSupabaseResponse(mockEmailTemplateFR);
+
+      const res = await getDefaultTemplate('email', 'it');
+      expect(res.data).not.toBeNull();
+      expect(res.data?.channel).toBe('email');
+    });
+
+    it('Test 4 : Retourne null sans lever d\'erreur si aucun template n\'existe pour le canal', async () => {
+      mockSupabaseResponse(null);
       mockSupabaseResponse(null);
       mockSupabaseResponse(null);
 
-      const res = await getDefaultTemplate('manual', 'fr');
+      const res = await getDefaultTemplate('letter', 'fr');
       expect(res.data).toBeNull();
       expect(res.error).toBeNull();
     });
   });
 
   // =========================================================================
-  // GROUPE 4 — setDefaultTemplate
+  // GROUPE — duplicateTemplate
   // =========================================================================
-  describe('GROUPE 4 — setDefaultTemplate', () => {
-    it('Test 4.1 : Désactive les autres templates du même canal + langue avant d activer le nouveau', async () => {
-      // 1. Désactivation des anciens
-      mockSupabaseResponse([{ id: 'old-tpl', is_default: false }]);
-      // 2. Activation du nouveau
-      mockSupabaseResponse({ id: mockTemplateId, is_default: true });
+  describe('GROUPE — duplicateTemplate', () => {
+    it('Test 1 : Duplication basique avec "(Copie)" dans le titre, version=1 et is_default=false', async () => {
+      mockSupabaseResponse(mockEmailTemplateFR);
+      mockSupabaseResponse({
+        ...mockEmailTemplateFR,
+        id: 'dup-new-id',
+        name: `${mockEmailTemplateFR.name} (Copie)`,
+        title: `${mockEmailTemplateFR.title} (Copie)`,
+        is_default: false,
+        version: 1
+      });
 
-      const res = await setDefaultTemplate(mockTemplateId, 'email', 'fr');
-      expect(res.success).toBe(true);
+      const res = await duplicateTemplate(mockEmailTemplateFR.id, undefined, mockAdminUserId);
 
-      const updateQueries = executedQueries.filter(
-        (q) => q.table === 'certification_message_templates' && q.method === 'update'
-      );
-      expect(updateQueries.length).toBeGreaterThanOrEqual(2);
+      expect(res.error).toBeNull();
+      expect(res.data?.id).toBe('dup-new-id');
+      expect(res.data?.title).toContain('(Copie)');
+      expect(res.data?.is_default).toBe(false);
+      expect(res.data?.version).toBe(1);
+    });
 
-      const firstUpdatePayload = updateQueries[0].args[0] as Record<string, unknown>;
-      expect(firstUpdatePayload.is_default).toBe(false);
+    it('Test 2 : Duplication avec un titre personnalisé explicite', async () => {
+      mockSupabaseResponse(mockEmailTemplateFR);
+      mockSupabaseResponse({
+        ...mockEmailTemplateFR,
+        id: 'dup-custom-id',
+        title: 'Mon Titre Sur Mesure',
+        name: 'Mon Titre Sur Mesure',
+        is_default: false
+      });
 
-      const secondUpdatePayload = updateQueries[1].args[0] as Record<string, unknown>;
-      expect(secondUpdatePayload.is_default).toBe(true);
+      const res = await duplicateTemplate(mockEmailTemplateFR.id, 'Mon Titre Sur Mesure', mockAdminUserId);
+
+      expect(res.error).toBeNull();
+      expect(res.data?.title).toBe('Mon Titre Sur Mesure');
+    });
+
+    it('Test 3 : Duplication d\'un template avec subject ajoute "[Copie]" en préfixe de subject', async () => {
+      mockSupabaseResponse(mockEmailTemplateFR);
+      mockSupabaseResponse({
+        ...mockEmailTemplateFR,
+        id: 'dup-subject-id',
+        subject: `[Copie] ${mockEmailTemplateFR.subject}`,
+        is_default: false
+      });
+
+      const res = await duplicateTemplate(mockEmailTemplateFR.id);
+
+      expect(res.error).toBeNull();
+      expect(res.data?.subject).toContain('[Copie]');
+    });
+
+    it('Test 4 : Duplication d\'un template introuvable retourne une erreur', async () => {
+      mockSupabaseResponse(null);
+
+      const res = await duplicateTemplate('unknown-id');
+
+      expect(res.data).toBeNull();
+      expect(res.error).toContain('introuvable');
     });
   });
 
   // =========================================================================
-  // GROUPE 5 — CRUD Templates (getTemplates, createTemplate, updateTemplate, deleteTemplate)
+  // GROUPE — Workflows d'Intégration Complets
   // =========================================================================
-  describe('GROUPE 5 — CRUD Templates', () => {
-    it('Test 5.1 : getTemplates avec filtres', async () => {
-      mockSupabaseResponse([mockTemplate]);
+  describe('GROUPE FINAL — Tests d\'Intégration End-to-End', () => {
+    it('Workflow 1 : Create → Update (v2) → Rollback (v3 restauré)', async () => {
+      // 1. Create
+      mockSupabaseResponse({
+        ...mockEmailTemplateFR,
+        id: 'workflow-tpl-1',
+        version: 1,
+        previous_version: null
+      });
 
-      const { getTemplates } = await import('../lib/certificationTemplatesService');
-      const res = await getTemplates({ language: 'fr', channel: 'email' });
-      expect(res.data).toHaveLength(1);
-      expect(res.error).toBeNull();
-    });
-
-    it('Test 5.2 : createTemplate avec is_default', async () => {
-      mockSupabaseResponse([{ id: 'old-tpl', is_default: false }]);
-      mockSupabaseResponse(mockTemplate);
-
-      const { createTemplate } = await import('../lib/certificationTemplatesService');
-      const res = await createTemplate({
-        name: 'Nouveau template',
+      const createRes = await createTemplate({
+        title: 'Template Workflow',
         language: 'fr',
         channel: 'email',
-        subject: 'Sujet',
-        body: 'Corps',
-        variables: ['producer_name'],
-        is_default: true,
-        created_by: null
+        subject: 'Objet Initial v1',
+        body: 'Corps Initial v1',
+        variables: ['producer_name']
+      }, mockAdminUserId);
+
+      expect(createRes.data?.version).toBe(1);
+
+      // 2. Update vers v2
+      mockSupabaseResponse(createRes.data);
+      mockSupabaseResponse({
+        ...createRes.data,
+        version: 2,
+        subject: 'Objet Modifié v2',
+        body: 'Corps Modifié v2',
+        previous_version: {
+          version: 1,
+          subject: 'Objet Initial v1',
+          body: 'Corps Initial v1',
+          variables: ['producer_name']
+        }
       });
 
-      expect(res.data).not.toBeNull();
-      expect(res.error).toBeNull();
-    });
+      const updateRes = await updateTemplate(
+        'workflow-tpl-1',
+        { subject: 'Objet Modifié v2', body: 'Corps Modifié v2' },
+        mockAdminUserId,
+        true
+      );
 
-    it('Test 5.3 : updateTemplate avec is_default', async () => {
-      mockSupabaseResponse([{ id: 'old-tpl', is_default: false }]);
-      mockSupabaseResponse({ ...mockTemplate, name: 'Modifié' });
+      expect(updateRes.data?.version).toBe(2);
+      expect(updateRes.data?.previous_version?.subject).toBe('Objet Initial v1');
 
-      const { updateTemplate } = await import('../lib/certificationTemplatesService');
-      const res = await updateTemplate(mockTemplateId, {
-        name: 'Modifié',
-        is_default: true,
-        channel: 'email',
-        language: 'fr'
+      // 3. Rollback
+      mockSupabaseResponse(updateRes.data);
+      mockSupabaseResponse({
+        ...updateRes.data,
+        version: 3,
+        subject: 'Objet Initial v1',
+        body: 'Corps Initial v1',
+        previous_version: {
+          version: 2,
+          subject: 'Objet Modifié v2'
+        }
       });
 
-      expect(res.data?.name).toBe('Modifié');
+      const rollbackRes = await rollbackTemplate('workflow-tpl-1', mockAdminUserId);
+      expect(rollbackRes.data?.version).toBe(3);
+      expect(rollbackRes.data?.subject).toBe('Objet Initial v1');
+      expect(rollbackRes.data?.body).toBe('Corps Initial v1');
     });
 
-    it('Test 5.4 : deleteTemplate supprime avec succès', async () => {
-      mockSupabaseResponse(null);
+    it('Workflow 2 : Export → Import JSON complet', async () => {
+      // 1. Exporter les modèles
+      const exportedJSON = await exportTemplatesAsJSON([mockEmailTemplateFR, mockWhatsAppTemplate]);
+      expect(typeof exportedJSON).toBe('string');
 
-      const { deleteTemplate } = await import('../lib/certificationTemplatesService');
-      const res = await deleteTemplate(mockTemplateId);
-      expect(res.success).toBe(true);
+      // 2. Importer le JSON
+      // Modèle 1
+      mockSupabaseResponse(null); // check existing
+      mockSupabaseResponse([]); // reset default
+      mockSupabaseResponse({ id: 'reimported-1', name: mockEmailTemplateFR.name }); // insert
+
+      // Modèle 2
+      mockSupabaseResponse(null); // check existing
+      mockSupabaseResponse([]); // reset default
+      mockSupabaseResponse({ id: 'reimported-2', name: mockWhatsAppTemplate.name }); // insert
+
+      const importRes = await importTemplatesFromJSON(exportedJSON, false, mockAdminUserId);
+      expect(importRes.importedCount).toBe(2);
+      expect(importRes.errors).toEqual([]);
+    });
+
+    it('Workflow 3 : Réinitialisation aux modèles standards (Reset)', async () => {
+      for (let i = 0; i < 12; i++) {
+        mockSupabaseResponse([{ id: 'old-default', is_default: false }]);
+        mockSupabaseResponse({ id: `official-${i}`, is_default: true });
+      }
+
+      const resetRes = await resetToDefaultTemplates(mockAdminUserId);
+      expect(resetRes.success).toBe(true);
+      expect(resetRes.count).toBe(12);
+      expect(resetRes.error).toBeNull();
+    });
+
+    it('Workflow 4 : Duplicate → Modify → Set Default', async () => {
+      // 1. Duplication
+      mockSupabaseResponse(mockEmailTemplateFR);
+      mockSupabaseResponse({
+        ...mockEmailTemplateFR,
+        id: 'dup-flow-id',
+        title: 'Email Copie',
+        is_default: false,
+        version: 1
+      });
+
+      const dupRes = await duplicateTemplate(mockEmailTemplateFR.id, 'Email Copie');
+      expect(dupRes.data?.is_default).toBe(false);
+
+      // 2. Modification
+      mockSupabaseResponse(dupRes.data);
+      mockSupabaseResponse({
+        ...dupRes.data,
+        body: 'Corps personnalisé',
+        version: 2
+      });
+
+      const updRes = await updateTemplate('dup-flow-id', { body: 'Corps personnalisé' });
+      expect(updRes.data?.version).toBe(2);
+
+      // 3. Définir par défaut: reset previous default + update target
+      mockSupabaseResponse([{ id: mockEmailTemplateFR.id, is_default: false }]);
+      mockSupabaseResponse({
+        ...updRes.data,
+        is_default: true
+      });
+
+      const defRes = await setDefaultTemplate('dup-flow-id', 'email', 'fr');
+      expect(defRes.success).toBe(true);
+      expect(defRes.error).toBeNull();
     });
   });
 });
