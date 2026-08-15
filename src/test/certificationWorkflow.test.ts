@@ -75,17 +75,20 @@ describe('certificationWorkflow Integration', () => {
       expect(logQueries.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('Test 1.2 : Workflow API complet (Validation directe instantanée et log audit)', async () => {
-      mockSupabaseResponse(mockProducerCertification);
+    it('Test 1.2 : Workflow portail/formulaire web (Redirection URL et log audit)', async () => {
+      const certPortalOnly = {
+        ...mockProducerCertification,
+        certification_body: {
+          ...mockCertificationBodyNoChannel,
+          verification_url: 'https://verify.ecocert.com/search'
+        }
+      };
+
+      mockSupabaseResponse(certPortalOnly);
       mockSupabaseResponse({ id: mockRequestId });
       mockSupabaseResponse({ status: 'unverified' });
-      mockSupabaseResponse({ id: mockCertificationId, status: 'verified' });
+      mockSupabaseResponse({ id: mockCertificationId, status: 'contact_sent' });
       mockSupabaseResponse({ id: 'log-1' });
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('{"status": "ACTIVE", "producer": "Coop Sambava"}')
-      });
 
       const res = await triggerOneClickVerification(
         mockCertificationId,
@@ -93,14 +96,15 @@ describe('certificationWorkflow Integration', () => {
         mockTemplateVariables
       );
 
-      expect(res.channel).toBe('api');
+      expect(res.channel).toBe('form');
       expect(res.success).toBe(true);
-      expect(res.status).toBe('verified');
+      expect(res.status).toBe('contact_sent');
+      expect(res.external_url).toBe('https://verify.ecocert.com/search');
 
       const logQuery = executedQueries.find(
         (q) =>
           q.table === 'certification_verification_logs' &&
-          (q.args[0] as Record<string, unknown>).action === 'API_VERIFY_SUCCESS'
+          (q.args[0] as Record<string, unknown>).action === 'PORTAL_VERIFY_TRIGGERED'
       );
       expect(logQuery).toBeDefined();
     });
@@ -204,18 +208,21 @@ describe('certificationWorkflow Integration', () => {
       expect(result.status).toBe('contact_sent');
     });
 
-    it('Test 2.3 : Timeout API absorbé proprement sans crash', async () => {
-      mockSupabaseResponse(mockProducerCertification);
+    it('Test 2.3 : Workflow WhatsApp génère le lien direct sans erreur', async () => {
+      const certWhatsAppOnly = {
+        ...mockProducerCertification,
+        certification_body: {
+          ...mockCertificationBodyNoChannel,
+          whatsapp: '+33612345678'
+        }
+      };
+
+      mockSupabaseResponse(certWhatsAppOnly);
+      mockSupabaseResponse(null); // Template
       mockSupabaseResponse({ id: mockRequestId });
       mockSupabaseResponse({ status: 'unverified' });
       mockSupabaseResponse({ id: mockCertificationId, status: 'contact_sent' });
       mockSupabaseResponse({ id: 'log-1' });
-
-      global.fetch = vi.fn().mockImplementation(() => {
-        return new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('AbortError: The operation was aborted')), 50);
-        });
-      });
 
       const result = await triggerOneClickVerification(
         mockCertificationId,
@@ -223,9 +230,10 @@ describe('certificationWorkflow Integration', () => {
         mockTemplateVariables
       );
 
-      expect(result.success).toBe(false);
-      expect(result.channel).toBe('api');
+      expect(result.success).toBe(true);
+      expect(result.channel).toBe('whatsapp');
       expect(result.status).toBe('contact_sent');
+      expect(result.external_url).toContain('https://wa.me/33612345678');
     });
   });
 });

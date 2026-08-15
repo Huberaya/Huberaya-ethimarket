@@ -1,10 +1,10 @@
 import React from 'react';
 import {
-  Cpu,
   Mail,
   Globe,
   MessageSquare,
   Phone,
+  FileText,
   UserCheck
 } from 'lucide-react';
 import {
@@ -21,11 +21,11 @@ export interface ChannelBadgeProps {
 }
 
 const CHANNEL_ICONS = {
-  Cpu,
   Mail,
   Globe,
   MessageSquare,
   Phone,
+  FileText,
   UserCheck
 } as const;
 

@@ -65,58 +65,60 @@ describe('certificationVerificationService', () => {
   });
 
   // =========================================================================
-  // GROUPE 2 — triggerOneClickVerification (cascade des canaux)
+  // GROUPE 2 — triggerOneClickVerification (cascade des canaux directs)
   // =========================================================================
   describe('GROUPE 2 — triggerOneClickVerification', () => {
-    it('Test 2.1 : Canal API sélectionné en priorité', async () => {
+    it('Test 2.1 : Canal Email sélectionné en priorité sans API externe', async () => {
       // 1. getProducerCertificationById return
       mockSupabaseResponse(mockProducerCertification);
       // 2. profiles lookup for admin
       mockSupabaseResponse({ first_name: 'Sophie', last_name: 'Audit', email: 'sophie@ethimarket.com' });
-      // 3. insert request return
-      mockSupabaseResponse({ id: mockRequestId });
-      // 4. updateCertificationStatus internal (get current status)
-      mockSupabaseResponse({ status: 'unverified' });
-      // 5. updateCertificationStatus update
-      mockSupabaseResponse({ id: mockCertificationId, status: 'verified' });
-      // 6. logVerificationAction insert
-      mockSupabaseResponse({ id: 'log-1' });
-
-      // Mock fetch API 200 OK
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('{"verified": true, "status": "active"}')
+      // 3. query default template
+      mockSupabaseResponse({
+        id: 'template-default-email',
+        subject: 'Demande de vérification — {{producer_name}}',
+        body: 'Vérification du certificat {{certificate_number}}'
       });
+      // 4. insert request return
+      mockSupabaseResponse({ id: mockRequestId });
+      // 5. updateCertificationStatus internal (get current status)
+      mockSupabaseResponse({ status: 'unverified' });
+      // 6. updateCertificationStatus update
+      mockSupabaseResponse({ id: mockCertificationId, status: 'contact_sent' });
+      // 7. logVerificationAction insert
+      mockSupabaseResponse({ id: 'log-1' });
 
       const result = await triggerOneClickVerification(
         mockCertificationId,
         mockAdminId
       );
 
-      expect(result.channel).toBe('api');
+      expect(result.channel).toBe('email');
       expect(result.success).toBe(true);
-      expect(result.status).toBe('verified');
+      expect(result.status).toBe('contact_sent');
       expect(result.request_id).toBe(mockRequestId);
     });
 
-    it('Test 2.2 : Fallback email si API échoue', async () => {
+    it('Test 2.2 : Notification admin lors de l envoi email', async () => {
       mockSupabaseResponse(mockProducerCertification);
       mockSupabaseResponse({ first_name: 'Sophie', last_name: 'Audit', email: 'sophie@ethimarket.com' });
+      mockSupabaseResponse({
+        id: 'template-default-email',
+        subject: 'Demande de vérification — {{producer_name}}',
+        body: 'Vérification du certificat {{certificate_number}}'
+      });
       mockSupabaseResponse({ id: mockRequestId });
       mockSupabaseResponse({ status: 'unverified' });
       mockSupabaseResponse({ id: mockCertificationId, status: 'contact_sent' });
       mockSupabaseResponse({ id: 'log-1' });
 
-      // Mock fetch timeout / Network error
-      global.fetch = vi.fn().mockRejectedValue(new Error('Network error / Timeout'));
-
       const result = await triggerOneClickVerification(
         mockCertificationId,
         mockAdminId
       );
 
-      expect(result.channel).toBe('api');
-      expect(result.success).toBe(false);
+      expect(result.channel).toBe('email');
+      expect(result.success).toBe(true);
       expect(result.status).toBe('contact_sent');
     });
 

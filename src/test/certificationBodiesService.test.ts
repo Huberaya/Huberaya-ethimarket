@@ -19,23 +19,12 @@ describe('certificationBodiesService', () => {
   });
 
   // =========================================================================
-  // GROUPE 1 — detectBestChannel
+  // GROUPE 1 — detectBestChannel (Canaux manuels sans API externe)
   // =========================================================================
   describe('GROUPE 1 — detectBestChannel', () => {
-    it('Test 1.1 : API prioritaire sur tout', () => {
+    it('Test 1.1 : Email prioritaire', () => {
       const body: CertificationBody = {
         ...mockCertificationBody,
-        api_endpoint: 'https://api.cert.com',
-        email_contact: 'contact@cert.com',
-        whatsapp: '+33600000000'
-      };
-      expect(detectBestChannel(body)).toBe('api');
-    });
-
-    it('Test 1.2 : Email si pas d API', () => {
-      const body: CertificationBody = {
-        ...mockCertificationBody,
-        api_endpoint: null,
         email_contact: 'contact@cert.com',
         whatsapp: '+33600000000',
         phone: '+33100000000'
@@ -43,28 +32,37 @@ describe('certificationBodiesService', () => {
       expect(detectBestChannel(body)).toBe('email');
     });
 
-    it('Test 1.3 : Form si pas d email', () => {
+    it('Test 1.2 : WhatsApp si pas d email', () => {
       const body: CertificationBody = {
         ...mockCertificationBody,
-        api_endpoint: null,
-        email_contact: null,
+        email_contact: undefined,
+        whatsapp: '+33600000000',
+        phone: '+33100000000'
+      };
+      expect(detectBestChannel(body)).toBe('whatsapp');
+    });
+
+    it('Test 1.3 : Formulaire / Portail si pas d email ni de WhatsApp', () => {
+      const body: CertificationBody = {
+        ...mockCertificationBody,
+        email_contact: undefined,
+        whatsapp: undefined,
         contact_form_url: 'https://cert.com/contact',
         phone: '+33100000000'
       };
       expect(detectBestChannel(body)).toBe('form');
     });
 
-    it('Test 1.4 : WhatsApp si pas de formulaire', () => {
+    it('Test 1.4 : Téléphone si pas de formulaire', () => {
       const body: CertificationBody = {
         ...mockCertificationBody,
-        api_endpoint: null,
-        email_contact: null,
-        contact_form_url: null,
-        verification_url: null,
-        whatsapp: '+33600000000',
+        email_contact: undefined,
+        whatsapp: undefined,
+        contact_form_url: undefined,
+        verification_url: undefined,
         phone: '+33100000000'
       };
-      expect(detectBestChannel(body)).toBe('whatsapp');
+      expect(detectBestChannel(body)).toBe('phone');
     });
 
     it('Test 1.5 : Phone si pas de WhatsApp', () => {
@@ -117,13 +115,13 @@ describe('certificationBodiesService', () => {
       expect(eqQueries.some((q) => q.args[0] === 'region' && q.args[1] === 'Europe')).toBe(true);
     });
 
-    it('Test 2.3 : Filtre has_api appliqué', async () => {
+    it('Test 2.3 : Filtre has_email appliqué', async () => {
       mockSupabaseResponse([mockCertificationBody], null, 1);
 
-      await getCertificationBodies({ has_api: true });
+      await getCertificationBodies({ has_email: true });
 
       const notQueries = executedQueries.filter((q) => q.method === 'not');
-      expect(notQueries.some((q) => q.args[0] === 'api_endpoint')).toBe(true);
+      expect(notQueries.some((q) => q.args[0] === 'email_contact')).toBe(true);
     });
 
     it('Test 2.4 : Filtre de recherche texte', async () => {

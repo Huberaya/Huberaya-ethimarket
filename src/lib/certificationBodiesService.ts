@@ -11,23 +11,23 @@ import type {
 
 /**
  * Détecte le meilleur canal de vérification disponible selon la priorité stricte :
- * api → email → form → whatsapp → phone → manual
+ * email → form → whatsapp → phone → postal → manual
  */
 export function detectBestChannel(body: CertificationBody): VerificationChannel {
-  if (body.api_endpoint && body.api_endpoint.trim().length > 0) {
-    return 'api';
-  }
   if (body.email_contact && body.email_contact.trim().length > 0) {
     return 'email';
-  }
-  if (body.verification_url || body.contact_form_url) {
-    return 'form';
   }
   if (body.whatsapp && body.whatsapp.trim().length > 0) {
     return 'whatsapp';
   }
+  if (body.verification_url || body.contact_form_url) {
+    return 'form';
+  }
   if (body.phone && body.phone.trim().length > 0) {
     return 'phone';
+  }
+  if (body.address && body.address.trim().length > 0) {
+    return 'postal';
   }
   return 'manual';
 }
@@ -65,15 +65,27 @@ export async function getCertificationBodies(
       if (filters.is_active !== undefined) {
         query = query.eq('is_active', filters.is_active);
       }
-      if (filters.has_api) {
-        query = query.not('api_endpoint', 'is', null).neq('api_endpoint', '');
-      }
       if (filters.has_email) {
         query = query.not('email_contact', 'is', null).neq('email_contact', '');
       }
+      if (filters.has_whatsapp) {
+        query = query.not('whatsapp', 'is', null).neq('whatsapp', '');
+      }
+      if (filters.has_form) {
+        query = query.or('verification_url.neq.,contact_form_url.neq.');
+      }
+      if (filters.has_phone) {
+        query = query.not('phone', 'is', null).neq('phone', '');
+      }
+      if (filters.domain) {
+        query = query.contains('domains', [filters.domain]);
+      }
+      if (filters.accreditation) {
+        query = query.contains('accreditations', [filters.accreditation]);
+      }
       if (filters.search && filters.search.trim()) {
         const term = `%${filters.search.trim()}%`;
-        query = query.or(`name.ilike.${term},acronym.ilike.${term},country.ilike.${term}`);
+        query = query.or(`name.ilike.${term},acronym.ilike.${term},country.ilike.${term},city.ilike.${term}`);
       }
     }
 
@@ -211,6 +223,11 @@ export async function deactivateCertificationBody(
     return { success: false, error: msg };
   }
 }
+
+/**
+ * Supprime/Désactive un organisme certificateur (alias de deactivateCertificationBody)
+ */
+export const deleteCertificationBody = deactivateCertificationBody;
 
 /**
  * Importe en lot plusieurs organismes certificateurs (upsert par nom et pays)
@@ -388,4 +405,100 @@ export async function removeStandard(
     const msg = err instanceof Error ? err.message : 'Erreur suppression standard';
     return { success: false, error: msg };
   }
+}
+
+/**
+ * Signale un problème sur un organisme certificateur (inactif, infos erronées, etc.)
+ */
+export async function reportCertificationBodyProblem(
+  bodyId: string,
+  reason: 'inactive' | 'wrong_info' | 'outdated_contact' | 'revoked_accreditation' | 'other',
+  details: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { data: body } = await supabase
+      .from('certification_bodies')
+      .select('reports_count, internal_notes')
+      .eq('id', bodyId)
+      .single();
+
+    const currentCount = ((body as { reports_count?: number })?.reports_count || 0) + 1;
+    const reportNote = `\n[SIGNALEMENT ${new Date().toISOString()}] Motif: ${reason}. Détails: ${details}`;
+    const updatedNotes = `${(body as { internal_notes?: string })?.internal_notes || ''}${reportNote}`.trim();
+
+    const { error } = await supabase
+      .from('certification_bodies')
+      .update({
+        reports_count: currentCount,
+        internal_notes: updatedNotes,
+        last_updated_at: new Date().toISOString()
+      })
+      .eq('id', bodyId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur lors de l enregistrement du signalement';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Valide et nettoie les données d'un organisme certificateur
+ */
+export function validateCertificationBody(
+  data: Partial<CertificationBodyInsert>
+): { isValid: boolean; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+
+  if (!data.name || data.name.trim().length === 0) {
+    errors.name = 'Le nom de l organisme est obligatoire.';
+  }
+
+  if (!data.country || data.country.trim().length === 0) {
+    errors.country = 'Le pays est obligatoire.';
+  }
+
+  if (!data.region) {
+    errors.region = 'La région géographique est obligatoire.';
+  }
+
+  if (data.email_contact && data.email_contact.trim().length > 0) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email_contact.trim())) {
+      errors.email_contact = 'L adresse email de contact est invalide.';
+    }
+  }
+
+  if (data.website && data.website.trim().length > 0) {
+    try {
+      new URL(data.website.trim());
+    } catch {
+      errors.website = 'L URL du site web est invalide (ex: https://exemple.org).';
+    }
+  }
+
+  if (data.verification_url && data.verification_url.trim().length > 0) {
+    try {
+      new URL(data.verification_url.trim());
+    } catch {
+      errors.verification_url = 'L URL du portail est invalide.';
+    }
+  }
+
+  if (data.contact_form_url && data.contact_form_url.trim().length > 0) {
+    try {
+      new URL(data.contact_form_url.trim());
+    } catch {
+      errors.contact_form_url = 'L URL du formulaire est invalide.';
+    }
+  }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
 }

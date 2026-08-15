@@ -409,82 +409,10 @@ export async function triggerOneClickVerification(
     }
 
     // =========================================================================
-    // CASCADE DE SÉLECTION DU CANAL
+    // CASCADE DE SÉLECTION DU CANAL DE CONTACT DIRECT (EMAIL > PORTAIL > WHATSAPP > TEL > POSTAL > MANUEL)
     // =========================================================================
 
-    // CANAL 1 — API AUTOMATISÉE
-    if (body.api_endpoint && body.api_endpoint.trim().length > 0) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-      let apiSuccess = false;
-      let apiResponseText = '';
-
-      try {
-        const fullUrl = `${body.api_endpoint}?cert_number=${encodeURIComponent(cert.certificate_number || '')}`;
-        const res = await fetch(fullUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            ...(body.api_key_encrypted ? { 'Authorization': `Bearer ${body.api_key_encrypted}` } : {})
-          },
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        apiSuccess = res.ok;
-        const rawText = await res.text();
-        apiResponseText = rawText.slice(0, 2000);
-      } catch (e: unknown) {
-        clearTimeout(timeoutId);
-        apiSuccess = false;
-        apiResponseText = e instanceof Error ? e.message : 'Erreur timeout/réseau lors de l appel API';
-      }
-
-      const reqStatus = apiSuccess ? 'success' : 'failed';
-      const newCertStatus = apiSuccess ? 'verified' : 'contact_sent';
-
-      // Enregistrement de la requête
-      const { data: reqData } = await supabase
-        .from('certification_verification_requests')
-        .insert({
-          producer_certification_id: certificationId,
-          certification_body_id: body.id,
-          triggered_by: adminId,
-          channel: 'api',
-          status: reqStatus,
-          message_sent: `Appel GET: ${body.api_endpoint} (cert: ${cert.certificate_number})`,
-          response_received: apiResponseText,
-          sent_at: new Date().toISOString(),
-          responded_at: new Date().toISOString()
-        })
-        .select('id')
-        .single();
-
-      await updateCertificationStatus(certificationId, newCertStatus, adminId, `Vérification API: ${reqStatus}`);
-
-      await logVerificationAction({
-        producer_certification_id: certificationId,
-        admin_id: adminId,
-        action: `API_VERIFY_${reqStatus.toUpperCase()}`,
-        previous_status: previousStatus,
-        new_status: newCertStatus,
-        channel_used: 'api',
-        details: { response: apiResponseText, requestId: reqData?.id }
-      });
-
-      return {
-        success: apiSuccess,
-        channel: 'api',
-        status: newCertStatus,
-        request_id: reqData?.id,
-        message: apiSuccess
-          ? 'Certificat vérifié et validé avec succès par API officielle.'
-          : 'L appel API a échoué ou a retourné une erreur. Statut basculé en attente de réponse.'
-      };
-    }
-
-    // CANAL 2 — EMAIL DIRECT
+    // CANAL 1 — EMAIL DIRECT
     if (body.email_contact && body.email_contact.trim().length > 0) {
       let emailSubject = `Demande de vérification de certificat — ${body.name}`;
       let emailBodyText = `Bonjour,\n\nNous souhaitons vérifier la validité du certificat ${cert.certificate_number || ''} pour ${cert.producer?.name || ''}.\nMerci de nous confirmer son authenticité.`;

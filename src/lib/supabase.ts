@@ -451,9 +451,6 @@ export type CertificationBody = {
   sub_region: string | null;
   website: string | null;
   verification_url: string | null;
-  api_endpoint: string | null;
-  api_key_required: boolean;
-  api_key_encrypted: string | null;
   email_contact: string | null;
   phone: string | null;
   whatsapp: string | null;
@@ -465,12 +462,34 @@ export type CertificationBody = {
   internal_notes: string | null;
   last_updated_at: string;
   created_at: string;
+
+  // Nouveaux champs d'enrichissement mondial
+  address?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  foundation_year?: number | null;
+  employee_count?: string | null;
+  logo_url?: string | null;
+  accreditations?: string[];
+  domains?: string[];
+  social_networks?: Record<string, string>;
+  contact_hours?: string | null;
+  timezone?: string | null;
+  average_cost?: string | null;
+  average_duration?: string | null;
+  reliability_score?: number;
+  verification_sources?: string[];
+  last_verified_at?: string | null;
+  reports_count?: number;
+
   // Relations optionnelles
   contacts?: CertificationBodyContact[];
   standards?: CertificationStandard[];
+
   // Rétrocompatibilité d'affichage
   short_name?: string;
-  logo_url?: string | null;
   verification_instructions?: string | null;
   description?: string | null;
   headquarters_country?: string | null;
@@ -505,11 +524,11 @@ export type TrustLevel =
   | 'pending';
 
 export type VerificationChannel =
-  | 'api'
   | 'email'
   | 'form'
   | 'phone'
   | 'whatsapp'
+  | 'postal'
   | 'manual';
 
 export type ProducerCertificationStatus =
@@ -702,8 +721,12 @@ export type CertificationBodyFilters = {
   certification_type?: CertificationType | 'ALL';
   trust_level?: TrustLevel | 'ALL';
   is_active?: boolean;
-  has_api?: boolean;
   has_email?: boolean;
+  has_whatsapp?: boolean;
+  has_form?: boolean;
+  has_phone?: boolean;
+  domain?: string;
+  accreditation?: string;
 };
 
 export type ProducerCertificationFilters = {
@@ -761,11 +784,11 @@ export const VERIFICATION_CHANNELS: {
   iconName: string; 
   badgeColor: string 
 }[] = [
-  { value: 'api', labelFr: 'API Automatique', labelEn: 'Automated API', iconName: 'Cpu', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   { value: 'email', labelFr: 'Email direct', labelEn: 'Direct Email', iconName: 'Mail', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
   { value: 'form', labelFr: 'Portail Web', labelEn: 'Web Portal', iconName: 'Globe', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { value: 'whatsapp', labelFr: 'WhatsApp', labelEn: 'WhatsApp', iconName: 'MessageSquare', badgeColor: 'bg-green-50 text-green-700 border-green-200' },
+  { value: 'whatsapp', labelFr: 'WhatsApp Business', labelEn: 'WhatsApp Business', iconName: 'MessageSquare', badgeColor: 'bg-green-50 text-green-700 border-green-200' },
   { value: 'phone', labelFr: 'Téléphone', labelEn: 'Phone Call', iconName: 'Phone', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'postal', labelFr: 'Courrier postal', labelEn: 'Postal Letter', iconName: 'FileText', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   { value: 'manual', labelFr: 'Contact Manuel', labelEn: 'Manual Contact', iconName: 'UserCheck', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' }
 ];
 
