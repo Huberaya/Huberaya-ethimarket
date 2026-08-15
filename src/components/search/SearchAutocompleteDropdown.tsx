@@ -77,7 +77,7 @@ export const SearchAutocompleteDropdown: React.FC<SearchAutocompleteDropdownProp
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-white text-emerald-800 border border-emerald-200 shadow-sm font-medium">
                 👤 {parsedQuery.gender}
               </span>
-            ))}
+            )}
             {parsedQuery.countries.map(c => (
               <span key={c} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-white text-emerald-800 border border-emerald-200 shadow-sm font-medium">
                 🌍 {c}

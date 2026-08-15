@@ -1,589 +1,444 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+// src/pages/Catalogue.tsx
+// Intelligent Multi-criteria Marketplace Catalogue with Natural Language Search
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
-  Search, SlidersHorizontal, X, ChevronLeft, ChevronRight,
-  Star, LayoutGrid, LayoutList, ArrowRight,
+  LayoutGrid,
+  LayoutList,
+  Sparkles,
+  MapPin,
+  Clock,
+  ArrowUpDown,
+  RotateCcw,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  Bookmark
 } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import ProductCard from '../components/ProductCard';
 import SEOHead from '../components/SEOHead';
 import { ProductCardSkeleton } from '../components/Skeleton';
 import { supabase, type Product, type Category } from '../lib/supabase';
-import { COUNTRIES } from '../lib/countries';
-
-/* ─── Constants ─────────────────────────────────────────── */
-
-const COUNTRY_NAMES = ['Tous les pays', ...COUNTRIES.map(c => c.name)];
+import { IntelligentSearchBar } from '../components/search/IntelligentSearchBar';
+import { AdvancedFiltersSidebar } from '../components/search/AdvancedFiltersSidebar';
+import { SearchResultsGrid } from '../components/search/SearchResultsGrid';
+import { SearchResultsTable } from '../components/search/SearchResultsTable';
+import { ProductComparisonDrawer } from '../components/search/ProductComparisonDrawer';
+import {
+  executeIntelligentSearch,
+  SearchResultItem,
+  StructuredFilters
+} from '../lib/productSearchEngine';
+import { findAlternativeProducts, AlternativeRecommendation } from '../lib/alternativeProductsEngine';
 
 const SORT_OPTIONS = [
-  { value: 'relevance',  label: 'Pertinence' },
-  { value: 'price_asc',  label: 'Prix croissant' },
-  { value: 'price_desc', label: 'Prix décroissant' },
-  { value: 'rating',     label: 'Meilleures notes' },
-  { value: 'newest',     label: 'Nouveautés' },
+  { value: 'relevance', label: 'Pertinence & Score éthique' },
+  { value: 'price_asc', label: 'Prix : Moins cher au plus cher' },
+  { value: 'price_desc', label: 'Prix : Plus cher au moins cher' },
+  { value: 'confidence', label: 'Score de confiance maximal' },
+  { value: 'carbon', label: 'Empreinte carbone minimale' },
+  { value: 'rating', label: 'Meilleures notes clients' },
+  { value: 'newest', label: 'Nouveaux arrivages' }
 ];
-
-const CERTS = [
-  { label: 'Agriculture Biologique', value: 'Bio' },
-  { label: 'Fairtrade',              value: 'Fairtrade' },
-  { label: 'Ecocert',                value: 'Ecocert' },
-  { label: 'Rainforest Alliance',    value: 'Rainforest Alliance' },
-  { label: 'GlobalG.A.P.',           value: 'GlobalGAP' },
-];
-
-const PER_PAGE = 12;
-
-/* ─── Main component ─────────────────────────────────────── */
 
 export default function Catalogue() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [products,    setProducts]    = useState<Product[]>([]);
-  const [categories,  setCategories]  = useState<Category[]>([]);
-  const [total,       setTotal]       = useState(0);
-  const [loading,     setLoading]     = useState(true);
-  const [drawerOpen,  setDrawerOpen]  = useState(false);
-  const [gridView,    setGridView]    = useState(true);
+  // Raw data from DB
+  const [rawProducts, setRawProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [search,           setSearch]           = useState(searchParams.get('q') ?? '');
-  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') ?? '');
-  const [selectedCountry,  setSelectedCountry]  = useState('Tous les pays');
-  const [selectedCerts,    setSelectedCerts]    = useState<string[]>([]);
-  const [minRating,        setMinRating]        = useState(0);
-  const [priceMin,         setPriceMin]         = useState(0);
-  const [priceMax,         setPriceMax]         = useState(500);
-  const [maxMoq,           setMaxMoq]           = useState(0);
-  const [minScore,         setMinScore]         = useState(0);
-  const [sort,             setSort]             = useState('relevance');
-  const [page,             setPage]             = useState(1);
+  // Search & Filter state
+  const [query, setQuery] = useState(searchParams.get('q') || '');
+  const [filters, setFilters] = useState<StructuredFilters>(() => {
+    const cat = searchParams.get('category');
+    return {
+      categories: cat ? [cat] : undefined,
+      sortBy: 'relevance'
+    };
+  });
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    let query = supabase
-      .from('products')
-      .select('*, producers(*), categories(*)', { count: 'exact' });
+  // Search Execution state
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [executionStats, setExecutionStats] = useState<{ count: number; timeMs: number; confidence: number }>({
+    count: 0,
+    timeMs: 0,
+    confidence: 0.9
+  });
 
-    // Search in name OR description
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
-    }
+  // Multi-view states
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
-    // Category filter — use category_id
-    if (selectedCategory) {
-      // Look up category id by slug
-      const cat = categories.find(c => c.slug === selectedCategory);
-      if (cat) query = query.eq('category_id', cat.id);
-    }
+  // Comparison & Alternatives state
+  const [comparedProducts, setComparedProducts] = useState<Product[]>([]);
+  const [alternativeTarget, setAlternativeTarget] = useState<Product | null>(null);
+  const [alternativeRecommendations, setAlternativeRecommendations] = useState<AlternativeRecommendation[]>([]);
 
-    // Country filter
-    if (selectedCountry !== 'Tous les pays') {
-      query = query.eq('country', selectedCountry);
-    }
-
-    // Rating filter
-    if (minRating > 0) {
-      query = query.gte('rating', minRating);
-    }
-
-    // Certifications filter (array overlaps)
-    if (selectedCerts.length > 0) {
-      query = query.overlaps('certifications', selectedCerts);
-    }
-
-    // Price range filter
-    if (priceMin > 0) {
-      query = query.gte('price', priceMin);
-    }
-    if (priceMax < 500) {
-      query = query.lte('price', priceMax);
-    }
-
-    // MOQ max filter
-    if (maxMoq > 0) {
-      query = query.lte('moq_value', maxMoq);
-    }
-
-    // Score minimum filter (uses producer's ethimarket_score via join)
-    if (minScore > 0) {
-      query = query.gte('product_score', minScore);
-    }
-
-    // Sorting
-    switch (sort) {
-      case 'price_asc':  query = query.order('price', { ascending: true }); break;
-      case 'price_desc': query = query.order('price', { ascending: false }); break;
-      case 'rating':     query = query.order('rating', { ascending: false }); break;
-      case 'newest':     query = query.order('created_at', { ascending: false }); break;
-      default:           query = query.order('featured', { ascending: false }); break;
-    }
-
-    const from = (page - 1) * PER_PAGE;
-    query = query.range(from, from + PER_PAGE - 1);
-
-    const { data } = await query;
-    if (data) {
-      // Filter products from producers who are approved by Bureau Veritas / Admin
-      const approvedOnly = data.filter(p => !p.producers || p.producers.verification_status === 'approved');
-      setProducts(approvedOnly);
-      setTotal(approvedOnly.length);
-    } else {
-      setProducts([]);
-      setTotal(0);
-    }
-    setLoading(false);
-  }, [search, selectedCategory, selectedCountry, selectedCerts, minRating, priceMin, priceMax, maxMoq, minScore, sort, page, categories]);
-
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
-
+  // 1. Fetch baseline products from Supabase
   useEffect(() => {
-    supabase.from('categories').select('*').order('product_count', { ascending: false })
-      .then(({ data }) => data && setCategories(data));
+    async function loadCatalog() {
+      setLoading(true);
+      try {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('*, producers(*), categories(*)')
+          .order('featured', { ascending: false });
+
+        if (prodData) {
+          setRawProducts(prodData as Product[]);
+        }
+
+        const { data: catData } = await supabase
+          .from('categories')
+          .select('*')
+          .order('name');
+
+        if (catData) {
+          setCategories(catData);
+        }
+      } catch (err) {
+        console.error('Error fetching catalog data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadCatalog();
   }, []);
 
-  const toggleCert = (val: string) => {
-    setSelectedCerts(prev => prev.includes(val) ? prev.filter(c => c !== val) : [...prev, val]);
-    setPage(1);
+  // 2. Execute intelligent hybrid search whenever query or filters change
+  const runSearch = useCallback(async (currentQuery: string, currentFilters: StructuredFilters) => {
+    const searchResponse = await executeIntelligentSearch(currentQuery, currentFilters, rawProducts);
+    setSearchResults(searchResponse.results);
+    setExecutionStats({
+      count: searchResponse.totalCount,
+      timeMs: searchResponse.executionTimeMs,
+      confidence: searchResponse.parsedQuery.confidence
+    });
+
+    // Check if query is an alternative search request
+    if (searchResponse.parsedQuery.intent === 'alternative_search' && searchResponse.parsedQuery.referenceTarget) {
+      const refTarget = searchResponse.parsedQuery.referenceTarget.toLowerCase();
+      const matchRef = rawProducts.find(p => p.name.toLowerCase().includes(refTarget));
+      if (matchRef) {
+        const alts = findAlternativeProducts(matchRef, rawProducts, searchResponse.parsedQuery);
+        setAlternativeTarget(matchRef);
+        setAlternativeRecommendations(alts);
+      }
+    } else {
+      setAlternativeTarget(null);
+      setAlternativeRecommendations([]);
+    }
+  }, [rawProducts]);
+
+  useEffect(() => {
+    if (rawProducts.length > 0) {
+      runSearch(query, filters);
+    }
+  }, [query, filters, rawProducts, runSearch]);
+
+  // Sync query URL
+  const handleQuerySubmit = (newQuery: string) => {
+    setQuery(newQuery);
+    if (newQuery) {
+      setSearchParams({ q: newQuery });
+    } else {
+      setSearchParams({});
+    }
+    runSearch(newQuery, filters);
   };
 
-  const reset = () => {
-    setSearch(''); setSelectedCategory(''); setSelectedCountry('Tous les pays');
-    setSelectedCerts([]); setMinRating(0); setPriceMin(0); setPriceMax(500); setMaxMoq(0);
-    setSort('relevance'); setPage(1);
-    setMinScore(0);
+  const handleResetFilters = () => {
+    setFilters({ sortBy: 'relevance' });
+    setQuery('');
     setSearchParams({});
   };
 
-  const totalPages = Math.ceil(total / PER_PAGE);
-  const activeFilterCount =
-    (selectedCountry !== 'Tous les pays' ? 1 : 0) +
-    selectedCerts.length +
-    (minRating > 0 ? 1 : 0) +
-    (selectedCategory ? 1 : 0) +
-    (priceMin > 0 ? 1 : 0) +
-    (priceMax < 500 ? 1 : 0) +
-    (maxMoq > 0 ? 1 : 0) +
-    (minScore > 0 ? 1 : 0) +
-    (search ? 1 : 0);
+  // Compare handlers
+  const handleToggleCompare = (product: Product) => {
+    setComparedProducts(prev => {
+      const exists = prev.some(p => p.id === product.id);
+      if (exists) {
+        return prev.filter(p => p.id !== product.id);
+      }
+      if (prev.length >= 5) {
+        alert('Vous pouvez comparer jusqu\'à 5 produits simultanément.');
+        return prev;
+      }
+      return [...prev, product];
+    });
+  };
 
-  /* ── Sidebar content (shared between desktop + mobile) ── */
-  const SidebarContent = () => (
-    <div className="space-y-7">
-      <div className="flex items-center justify-between">
-        <h2 className="font-bold text-gray-900 text-base">Filtres</h2>
-        {activeFilterCount > 0 && (
-          <button onClick={reset} className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
-            <X className="w-3 h-3" /> Réinitialiser ({activeFilterCount})
-          </button>
-        )}
-      </div>
+  const handleSearchAlternativesForProduct = (product: Product) => {
+    const alts = findAlternativeProducts(product, rawProducts);
+    setAlternativeTarget(product);
+    setAlternativeRecommendations(alts);
+    // Scroll smoothly to alternative section
+    window.scrollTo({ top: 350, behavior: 'smooth' });
+  };
 
-      {/* Recherche */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Recherche</p>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Nom ou description..."
-            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
-          />
-        </div>
-      </div>
-
-      {/* Catégorie */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Catégorie</p>
-        <div className="space-y-1 max-h-52 overflow-y-auto scrollbar-hide">
-          <label className="flex items-center gap-2.5 cursor-pointer py-1 group">
-            <input type="radio" name="category" checked={!selectedCategory}
-              onChange={() => { setSelectedCategory(''); setPage(1); }}
-              className="w-4 h-4 accent-brand-500" />
-            <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors">Toutes les catégories</span>
-          </label>
-          {categories.map(cat => (
-            <label key={cat.id} className="flex items-center gap-2.5 cursor-pointer py-1 group">
-              <input type="radio" name="category" checked={selectedCategory === cat.slug}
-                onChange={() => { setSelectedCategory(cat.slug); setPage(1); }}
-                className="w-4 h-4 accent-brand-500" />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors flex-1">{cat.emoji} {cat.name}</span>
-              <span className="text-xs text-gray-400">{cat.product_count.toLocaleString('fr-FR')}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Pays */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Pays d'origine</p>
-        <select
-          value={selectedCountry}
-          onChange={e => { setSelectedCountry(e.target.value); setPage(1); }}
-          className="w-full py-2.5 px-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none bg-white appearance-none cursor-pointer"
-        >
-          {COUNTRY_NAMES.map(c => <option key={c}>{c}</option>)}
-        </select>
-      </div>
-
-      {/* Fourchette de prix */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Fourchette de prix</p>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <input type="number" min="0" max={priceMax} value={priceMin}
-              onChange={e => { setPriceMin(Math.min(Number(e.target.value), priceMax)); setPage(1); }}
-              className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-brand-500" />
-            <span className="text-xs text-gray-400">à</span>
-            <input type="number" min={priceMin} max="500" value={priceMax}
-              onChange={e => { setPriceMax(Math.max(Number(e.target.value), priceMin)); setPage(1); }}
-              className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-brand-500" />
-            <span className="text-xs text-gray-400">€</span>
-          </div>
-          <input type="range" min="0" max="500" value={priceMin}
-            onChange={e => { setPriceMin(Math.min(Number(e.target.value), priceMax)); setPage(1); }}
-            className="w-full accent-brand-500" />
-          <input type="range" min="0" max="500" value={priceMax}
-            onChange={e => { setPriceMax(Math.max(Number(e.target.value), priceMin)); setPage(1); }}
-            className="w-full accent-brand-500" />
-        </div>
-      </div>
-
-      {/* MOQ maximum */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">MOQ maximum</p>
-        <input type="number" min="0" value={maxMoq}
-          onChange={e => { setMaxMoq(Number(e.target.value)); setPage(1); }}
-          placeholder="Aucune limite"
-          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" />
-        <p className="text-xs text-gray-400 mt-1">Filtrer les produits avec un MOQ ≤ cette valeur</p>
-      </div>
-
-      {/* Certifications */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Certifications</p>
-        <div className="space-y-2">
-          {CERTS.map(cert => (
-            <label key={cert.value} className="flex items-center gap-2.5 cursor-pointer group py-0.5">
-              <input type="checkbox" checked={selectedCerts.includes(cert.value)}
-                onChange={() => toggleCert(cert.value)}
-                className="w-4 h-4 rounded accent-brand-500" />
-              <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors">{cert.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Note minimale */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Note minimale</p>
-        <div className="flex items-center gap-1">
-          {[1,2,3,4,5].map(s => (
-            <button
-              key={s}
-              onClick={() => { setMinRating(s === minRating ? 0 : s); setPage(1); }}
-              className="p-0.5 transition-transform hover:scale-110"
-            >
-              <Star className={`w-6 h-6 transition-colors ${s <= minRating ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200 hover:text-amber-300 hover:fill-amber-300'}`} />
-            </button>
-          ))}
-          {minRating > 0 && <span className="ml-1 text-xs text-gray-500">{minRating}+</span>}
-        </div>
-      </div>
-
-      {/* Score EthiMarket minimum */}
-      <div>
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Score EthiMarket minimum</p>
-        <input
-          type="range" min="0" max="100" step="5" value={minScore}
-          onChange={e => { setMinScore(Number(e.target.value)); setPage(1); }}
-          className="w-full accent-brand-500"
-        />
-        <div className="flex items-center justify-between mt-1.5">
-          <span className="text-xs text-gray-400">0</span>
-          <span className="text-sm font-black text-brand-600">{minScore}+</span>
-          <span className="text-xs text-gray-400">100</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-1.5">Filtre les produits dont le score est ≥ {minScore}</p>
-      </div>
-    </div>
-  );
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.certifications?.length) count += filters.certifications.length;
+    if (filters.countries?.length) count += filters.countries.length;
+    if (filters.maxPrice !== undefined) count += 1;
+    if (filters.minPrice !== undefined) count += 1;
+    if (filters.maxCo2 !== undefined) count += 1;
+    if (filters.isVegan) count += 1;
+    if (filters.isRecycled) count += 1;
+    if (filters.livingWage) count += 1;
+    if (filters.isCooperative) count += 1;
+    if (filters.plasticFree) count += 1;
+    if (filters.fullTraceability) count += 1;
+    if (filters.minConfidenceScore) count += 1;
+    if (filters.inStockOnly) count += 1;
+    return count;
+  }, [filters]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-neutral-50/50 flex flex-col">
       <SEOHead
-        title="Catalogue Produits Bio & Équitables | EthiMarket"
-        description="Parcourez plus de 50 000 produits bio certifiés en direct des coopératives agricoles : cacao, café, épices, fruits, huiles. Prix directs sans intermédiaire."
+        title="Catalogue Éthique & Moteur de Recherche Intelligent | EthiMarket"
+        description="Trouvez des produits éthiques, bios et équitables grâce à notre moteur de recherche multicritères en langage naturel sans coût d'API."
       />
       <Header />
 
-      {/* Page header */}
-      <div className="pt-16 bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <nav className="flex items-center gap-2 text-xs text-gray-400 mb-4">
-            <Link to="/" className="hover:text-brand-600 transition-colors">Accueil</Link>
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-gray-900 font-semibold">Catalogue</span>
-          </nav>
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-black text-gray-900">Catalogue produits</h1>
-              <p className="text-gray-500 mt-1">Produits bio certifiés du monde entier</p>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Top Search Hero Bar */}
+        <div className="bg-gradient-to-br from-emerald-900 to-neutral-900 rounded-3xl p-6 md:p-10 text-white shadow-xl relative overflow-hidden">
+          <div className="relative z-10 max-w-3xl space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold border border-emerald-400/30 backdrop-blur-sm">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Moteur de recherche multicritères & langage naturel (Zéro API externe)</span>
             </div>
-            {/* Category chips */}
-            <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 4).map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => { setSelectedCategory(selectedCategory === cat.slug ? '' : cat.slug); setPage(1); }}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
-                    selectedCategory === cat.slug
-                      ? 'bg-brand-500 text-white border-brand-500'
-                      : 'border-gray-200 text-gray-600 hover:border-brand-400 hover:text-brand-600 bg-white'
-                  }`}
-                >
-                  {cat.emoji} {cat.name}
-                </button>
-              ))}
+            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight">
+              Trouvez exactement le produit éthique qu'il vous faut
+            </h1>
+            <p className="text-sm md:text-base text-neutral-300">
+              Tapez votre recherche en langage naturel, spécifiez vos exigences (bio, origine, salaire décent, CO2) ou demandez des alternatives comparatives.
+            </p>
+
+            {/* Prominent Search Bar */}
+            <div className="pt-2">
+              <IntelligentSearchBar
+                query={query}
+                onQueryChange={setQuery}
+                onSearchSubmit={handleQuerySubmit}
+                onToggleFilters={() => setIsMobileFiltersOpen(true)}
+                activeFiltersCount={activeFiltersCount}
+                catalogProducts={rawProducts}
+              />
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-7">
-          {/* Sidebar desktop */}
-          <aside className="hidden lg:block w-64 xl:w-72 flex-shrink-0">
-            <div className="sticky top-24 bg-white rounded-2xl border border-gray-100 shadow-card p-6">
-              <SidebarContent />
+        {/* Alternative Recommendation Banner if triggered */}
+        {alternativeTarget && alternativeRecommendations.length > 0 && (
+          <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-indigo-950 font-bold text-base">
+                <Sparkles className="w-5 h-5 text-indigo-600" />
+                <span>Alternatives recommandées pour : "{alternativeTarget.name}"</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAlternativeTarget(null)}
+                className="text-xs text-indigo-700 hover:text-indigo-900 font-semibold underline"
+              >
+                Masquer
+              </button>
             </div>
-          </aside>
-
-          {/* Main */}
-          <div className="flex-1 min-w-0">
-            {/* Controls bar */}
-            <div className="flex items-center justify-between gap-4 mb-5 bg-white rounded-2xl border border-gray-100 px-5 py-3.5 shadow-card">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setDrawerOpen(true)}
-                  className="lg:hidden flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-brand-600 transition-colors"
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {alternativeRecommendations.slice(0, 3).map((alt, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white rounded-xl p-4 border border-indigo-100 shadow-sm flex flex-col justify-between"
                 >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Filtres
-                  {activeFilterCount > 0 && (
-                    <span className="bg-brand-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-                <span className="hidden lg:block text-sm text-gray-500">
-                  <span className="font-bold text-gray-900">{total.toLocaleString('fr-FR')}</span> produit{total > 1 ? 's' : ''} trouvé{total > 1 ? 's' : ''}
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-neutral-500 mb-1">
+                      <span>{alt.alternativeProduct.country_flag} {alt.alternativeProduct.country}</span>
+                      <span className="font-bold text-emerald-700">
+                        {alt.alternativeProduct.price} €
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-neutral-900 text-sm mb-2">
+                      {alt.alternativeProduct.name}
+                    </h4>
+                    <p className="text-xs text-indigo-900 bg-indigo-50/70 p-2 rounded-lg font-medium mb-2">
+                      💡 {alt.recommendationReason}
+                    </p>
+                    <div className="space-y-1">
+                      {alt.advantages.map((adv, i) => (
+                        <div key={i} className="text-[11px] text-emerald-800 flex items-center gap-1 font-medium">
+                          <span>✓</span>
+                          <span>{adv}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-neutral-100 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCompare(alt.alternativeProduct)}
+                      className="text-xs text-indigo-700 hover:underline font-semibold"
+                    >
+                      + Comparer
+                    </button>
+                    <Link
+                      to={`/produits/${alt.alternativeProduct.slug}`}
+                      className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold"
+                    >
+                      Voir le produit
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Main Content Layout: Sidebar Filters + Results Grid/Table */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+          {/* Left Faceted Filters Sidebar */}
+          <div className="lg:col-span-1">
+            <AdvancedFiltersSidebar
+              filters={filters}
+              onFilterChange={setFilters}
+              onResetFilters={handleResetFilters}
+              onSaveSearchModalOpen={() => alert('Recherche enregistrée avec succès dans vos alertes !')}
+              catalogProducts={rawProducts}
+              totalResultsCount={searchResults.length}
+              isOpenMobile={isMobileFiltersOpen}
+              onCloseMobile={() => setIsMobileFiltersOpen(false)}
+            />
+          </div>
+
+          {/* Right Results Section */}
+          <div className="lg:col-span-3 space-y-4">
+            {/* Control Bar: Results stats, Sort dropdown & View switcher */}
+            <div className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* Left: Execution stats */}
+              <div className="flex items-center gap-3 text-xs text-neutral-600">
+                <span className="font-bold text-neutral-900 text-sm">
+                  {searchResults.length} résultat{searchResults.length > 1 ? 's' : ''}
                 </span>
+                <span>•</span>
+                <span className="text-neutral-400">
+                  Traité en {executionStats.timeMs}ms
+                </span>
+                {query && (
+                  <>
+                    <span>•</span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                      NLP Match {Math.round(executionStats.confidence * 100)}%
+                    </span>
+                  </>
+                )}
               </div>
 
-              <div className="flex items-center gap-3">
-                <select
-                  value={sort}
-                  onChange={e => { setSort(e.target.value); setPage(1); }}
-                  className="py-1.5 px-3 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none bg-white"
-                >
-                  {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+              {/* Right: Sort & Layout toggles */}
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                {/* Sort selector */}
+                <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <select
+                    value={filters.sortBy || 'relevance'}
+                    onChange={e => setFilters({ ...filters, sortBy: e.target.value as any })}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {SORT_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <div className="hidden sm:flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                  <button onClick={() => setGridView(true)}
-                    className={`p-1.5 rounded-md transition-colors ${gridView ? 'bg-white shadow-sm text-brand-600' : 'text-gray-400 hover:text-gray-700'}`}>
+                {/* View switcher buttons */}
+                <div className="flex items-center bg-neutral-100 rounded-xl p-1 border border-neutral-200">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-lg transition ${
+                      viewMode === 'grid' ? 'bg-white shadow-sm text-emerald-700 font-bold' : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                    title="Vue grille"
+                  >
                     <LayoutGrid className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setGridView(false)}
-                    className={`p-1.5 rounded-md transition-colors ${!gridView ? 'bg-white shadow-sm text-brand-600' : 'text-gray-400 hover:text-gray-700'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded-lg transition ${
+                      viewMode === 'table' ? 'bg-white shadow-sm text-emerald-700 font-bold' : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                    title="Vue liste condensée B2B"
+                  >
                     <LayoutList className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Active filter chips */}
-            {activeFilterCount > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {search && (
-                  <span className="flex items-center gap-1.5 bg-gray-100 text-gray-700 border border-gray-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    "{search}"
-                    <button onClick={() => { setSearch(''); setPage(1); }} className="hover:text-gray-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {selectedCategory && (
-                  <span className="flex items-center gap-1.5 bg-brand-50 text-brand-700 border border-brand-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    {categories.find(c => c.slug === selectedCategory)?.emoji}{' '}
-                    {categories.find(c => c.slug === selectedCategory)?.name}
-                    <button onClick={() => { setSelectedCategory(''); setPage(1); }} className="hover:text-brand-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {selectedCountry !== 'Tous les pays' && (
-                  <span className="flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    {selectedCountry}
-                    <button onClick={() => { setSelectedCountry('Tous les pays'); setPage(1); }} className="hover:text-blue-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {(priceMin > 0 || priceMax < 500) && (
-                  <span className="flex items-center gap-1.5 bg-teal-50 text-teal-700 border border-teal-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    {priceMin}€ – {priceMax}€
-                    <button onClick={() => { setPriceMin(0); setPriceMax(500); setPage(1); }} className="hover:text-teal-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {maxMoq > 0 && (
-                  <span className="flex items-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    MOQ ≤ {maxMoq}
-                    <button onClick={() => { setMaxMoq(0); setPage(1); }} className="hover:text-purple-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {selectedCerts.map(cert => (
-                  <span key={cert} className="flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    {cert}
-                    <button onClick={() => toggleCert(cert)} className="hover:text-amber-900"><X className="w-3 h-3" /></button>
-                  </span>
-                ))}
-                {minRating > 0 && (
-                  <span className="flex items-center gap-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    {minRating}+ étoiles
-                    <button onClick={() => { setMinRating(0); setPage(1); }} className="hover:text-yellow-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-                {minScore > 0 && (
-                  <span className="flex items-center gap-1.5 bg-brand-50 text-brand-700 border border-brand-200 text-xs px-3 py-1.5 rounded-full font-semibold">
-                    Score ≥ {minScore}
-                    <button onClick={() => { setMinScore(0); setPage(1); }} className="hover:text-brand-900"><X className="w-3 h-3" /></button>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Product grid */}
+            {/* Loading skeletons */}
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {[...Array(9)].map((_, i) => <ProductCardSkeleton key={i} />)}
+                {[...Array(6)].map((_, i) => (
+                  <ProductCardSkeleton key={i} />
+                ))}
               </div>
-            ) : products.length > 0 ? (
-              <div className={gridView
-                ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5'
-                : 'flex flex-col gap-4'
-              }>
-                {products.map(p =>
-                  gridView
-                    ? <ProductCard key={p.id} product={p} />
-                    : <ListRow key={p.id} product={p} />
-                )}
-              </div>
+            ) : searchResults.length > 0 ? (
+              viewMode === 'grid' ? (
+                <SearchResultsGrid
+                  results={searchResults}
+                  selectedComparisonIds={comparedProducts.map(p => p.id)}
+                  onToggleCompare={handleToggleCompare}
+                  onSearchAlternative={handleSearchAlternativesForProduct}
+                />
+              ) : (
+                <SearchResultsTable
+                  results={searchResults}
+                  selectedComparisonIds={comparedProducts.map(p => p.id)}
+                  onToggleCompare={handleToggleCompare}
+                />
+              )
             ) : (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
-                <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-4xl mb-5">🔍</div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Aucun produit trouvé</h3>
-                <p className="text-gray-500 text-sm mb-5 max-w-xs">Essayez d'ajuster vos critères de recherche ou de supprimer certains filtres.</p>
-                <button onClick={reset} className="btn-primary px-6 py-2.5">Réinitialiser les filtres</button>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-10">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="p-2.5 bg-white border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-gray-50 hover:border-gray-300 transition-all">
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                {[...Array(Math.min(totalPages, 7))].map((_, i) => {
-                  const p = i + 1;
-                  return (
-                    <button key={p} onClick={() => setPage(p)}
-                      className={`w-10 h-10 text-sm font-semibold rounded-xl transition-all ${
-                        page === p ? 'bg-brand-500 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-400 hover:text-brand-600'
-                      }`}>
-                      {p}
-                    </button>
-                  );
-                })}
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="p-2.5 bg-white border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-gray-50 hover:border-gray-300 transition-all">
-                  <ChevronRight className="w-4 h-4" />
+              /* Zero result empty state */
+              <div className="bg-white rounded-3xl border border-neutral-200 p-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center justify-center text-3xl mx-auto">
+                  🔍
+                </div>
+                <h3 className="text-lg font-bold text-neutral-900">
+                  Aucun produit ne correspond exactement à vos critères
+                </h3>
+                <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                  Essayez d'élargir votre recherche, de réduire les filtres stricts ou de tester un exemple en langage naturel.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                >
+                  Réinitialiser tous les filtres
                 </button>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Mobile sidebar drawer */}
-      {drawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute inset-y-0 left-0 w-80 bg-white shadow-2xl overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-              <h2 className="font-bold text-gray-900">Filtres</h2>
-              <button onClick={() => setDrawerOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5">
-              <SidebarContent />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Floating Comparator Drawer (up to 5 products) */}
+      <ProductComparisonDrawer
+        selectedProducts={comparedProducts}
+        onRemoveProduct={id => setComparedProducts(prev => prev.filter(p => p.id !== id))}
+        onClearAll={() => setComparedProducts([])}
+      />
 
       <Footer />
-    </div>
-  );
-}
-
-/* ─── List row view ──────────────────────────────────────── */
-
-const CERT_BADGE: Record<string, string> = {
-  Bio: 'badge-bio', Fairtrade: 'badge-fairtrade', Ecocert: 'badge-ecocert',
-  'Rainforest Alliance': 'badge-rainforest', GlobalGAP: 'badge-globalgap',
-};
-
-function ListRow({ product }: { product: Product }) {
-  return (
-    <div className="card flex gap-4 p-4 group">
-      <Link to={`/produit/${product.id}`} className="flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden">
-        {product.image_url ? (
-          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-3xl" style={{ backgroundColor: product.bg_color }}>
-            {product.emoji}
-          </div>
-        )}
-      </Link>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link to={`/produit/${product.id}`}>
-              <h3 className="font-bold text-gray-900 hover:text-brand-600 transition-colors">{product.name}</h3>
-            </Link>
-            <p className="text-xs text-gray-500 mt-0.5">{product.country_flag} {product.country}</p>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <div className="text-xl font-black text-gray-900">{product.price.toFixed(2)} €<span className="text-xs text-gray-400 font-normal">/{product.price_unit}</span></div>
-            <div className="text-xs text-gray-500">MOQ {product.moq_value} {product.moq_unit}</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="flex items-center gap-1">
-            {[1,2,3,4,5].map(s => (
-              <Star key={s} className={`w-3 h-3 ${s <= Math.round(product.rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'}`} />
-            ))}
-            <span className="text-xs text-gray-500 ml-0.5">({product.review_count})</span>
-          </div>
-          <div className="flex gap-1">
-            {product.certifications.slice(0, 3).map(c => (
-              <span key={c} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${CERT_BADGE[c] ?? 'bg-gray-100 text-gray-700'}`}>{c}</span>
-            ))}
-          </div>
-          <Link to={`/produit/${product.id}`} className="ml-auto btn-outline py-1.5 px-4 text-xs">
-            Voir <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }
