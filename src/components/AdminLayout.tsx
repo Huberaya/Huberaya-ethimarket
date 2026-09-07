@@ -26,7 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/admin', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
       { to: '/admin/producteurs', label: 'Producteurs', icon: Users },
-      { to: '/admin/propection', label: 'Propection', icon: Target },
+      { to: '/admin/prospection', label: 'Prospection', icon: Target },
       { to: '/admin/verifications', label: 'Vérifications', icon: ShieldCheck },
       { to: '/admin/organismes', label: 'Organismes certif.', icon: Building2 },
     ]

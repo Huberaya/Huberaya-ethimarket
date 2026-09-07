@@ -1,6 +1,6 @@
-# Propection — base producteurs
+# Prospection — base producteurs
 
-Onglet **Propection** du dashboard admin (`/admin/propection`) : la base de prospection
+Onglet **Prospection** du dashboard admin (`/admin/prospection`) : la base de prospection
 des producteurs réels d'Ethimarket, consultable, filtrable et exportable sans quitter l'app.
 
 ## Ce que contient la base
@@ -44,8 +44,8 @@ data/base_producteurs_ethimarket.csv base complète (21 colonnes, source de vér
 data-pipeline/build_db.py           agrégation + dédoublonnage des sources
 data-pipeline/export_xlsx.py        export CSV/XLSX de la base
 src/lib/producerProspects.ts        types, chargement, filtres, export CSV, persistance
-src/pages/admin/AdminPropection.tsx page admin
-src/pages/admin/PropectionPreview.tsx prévisualisation sans auth (dev uniquement)
+src/pages/admin/AdminProspection.tsx page admin
+src/pages/admin/ProspectionPreview.tsx prévisualisation sans auth (dev uniquement)
 ```
 
 ## Mettre à jour la base
@@ -67,6 +67,6 @@ src/pages/admin/PropectionPreview.tsx prévisualisation sans auth (dev uniquemen
 ```bash
 npm install
 npm run dev
-# http://localhost:3000/propection-preview   (sans authentification, dev uniquement)
+# http://localhost:3000/prospection-preview   (sans authentification, dev uniquement)
 # http://localhost:3000/admin/propection     (compte admin requis)
 ```

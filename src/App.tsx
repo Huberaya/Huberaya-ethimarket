@@ -30,8 +30,8 @@ import AdminLayout from './components/AdminLayout';
 import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducers from './pages/admin/Producers';
-import AdminPropection from './pages/admin/AdminPropection';
-import PropectionPreview from './pages/admin/PropectionPreview';
+import AdminProspection from './pages/admin/AdminProspection';
+import ProspectionPreview from './pages/admin/ProspectionPreview';
 import AdminVerificationsPage from './pages/admin/Verifications';
 import AdminVerificationDetail from './pages/admin/AdminVerificationDetail';
 import AdminCertBodies from './pages/admin/AdminCertBodies';
@@ -93,13 +93,16 @@ export default function App() {
         </Route>
         <Route path="/score-ethimarket" element={<ScoreEthiMarket />} />
         {/* Prévisualisation sans authentification — développée uniquement, jamais exposée en production */}
-        {import.meta.env.DEV && <Route path="/propection-preview" element={<PropectionPreview />} />}
+        {/* Aperçu sans authentification — développement uniquement, jamais exposé en production */}
+        {import.meta.env.DEV && <Route path="/prospection-preview" element={<ProspectionPreview />} />}
+        {import.meta.env.DEV && <Route path="/propection-preview" element={<ProspectionPreview />} />}
 
         {/* Admin routes (protected by admin role) */}
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
           <Route index element={<AdminDashboard />} />
           <Route path="producteurs" element={<AdminProducers />} />
-          <Route path="propection" element={<AdminPropection />} />
+          <Route path="prospection" element={<AdminProspection />} />
+          <Route path="propection" element={<AdminProspection />} />
           <Route path="verifications" element={<AdminVerificationsPage />} />
           <Route path="verification/:producerId" element={<AdminVerificationDetail />} />
           <Route path="organismes" element={<AdminCertBodies />} />

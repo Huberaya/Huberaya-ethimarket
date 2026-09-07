@@ -80,7 +80,7 @@ function Field({ icon: Icon, label, value, href }: {
   );
 }
 
-export default function AdminPropection() {
+export default function AdminProspection() {
   const [dataset, setDataset] = useState<ProspectDataset | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -145,7 +145,7 @@ export default function AdminPropection() {
   if (loading) {
     return (
       <div>
-        <AdminPageHeader title="Propection" subtitle="Base de prospection des producteurs" />
+        <AdminPageHeader title="Prospection" subtitle="Base de prospection des producteurs réels" />
         <div className="bg-white rounded-xl border border-gray-100 shadow-card p-10 text-center">
           <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm text-gray-500 mt-4">Chargement de la base producteurs…</p>
@@ -157,7 +157,7 @@ export default function AdminPropection() {
   if (error || !dataset) {
     return (
       <div>
-        <AdminPageHeader title="Propection" subtitle="Base de prospection des producteurs" />
+        <AdminPageHeader title="Prospection" subtitle="Base de prospection des producteurs réels" />
         <div className="bg-red-50 border border-red-100 rounded-xl p-6 flex gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
           <div>
@@ -177,7 +177,7 @@ export default function AdminPropection() {
   return (
     <div>
       <AdminPageHeader
-        title="Propection"
+        title="Prospection"
         subtitle={`${s.total.toLocaleString('fr-FR')} producteurs réels · ${s.countries} pays · base générée le ${dataset.generatedAt || '—'}`}
       >
         <button
