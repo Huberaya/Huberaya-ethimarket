@@ -22,3 +22,10 @@ coverage
 *.sln
 *.sw?
 .env
+
+# Data pipeline (fichiers bruts volumineux non versionnés)
+data-pipeline/raw/
+*.xlsx
+!data/*.csv
+__pycache__/
+*.pyc

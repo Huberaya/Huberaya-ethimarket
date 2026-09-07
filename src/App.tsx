@@ -30,6 +30,8 @@ import AdminLayout from './components/AdminLayout';
 import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminProducers from './pages/admin/Producers';
+import AdminPropection from './pages/admin/AdminPropection';
+import PropectionPreview from './pages/admin/PropectionPreview';
 import AdminVerificationsPage from './pages/admin/Verifications';
 import AdminVerificationDetail from './pages/admin/AdminVerificationDetail';
 import AdminCertBodies from './pages/admin/AdminCertBodies';
@@ -90,11 +92,14 @@ export default function App() {
           <Route path="verification" element={<Verification />} />
         </Route>
         <Route path="/score-ethimarket" element={<ScoreEthiMarket />} />
+        {/* Prévisualisation sans authentification — développée uniquement, jamais exposée en production */}
+        {import.meta.env.DEV && <Route path="/propection-preview" element={<PropectionPreview />} />}
 
         {/* Admin routes (protected by admin role) */}
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
           <Route index element={<AdminDashboard />} />
           <Route path="producteurs" element={<AdminProducers />} />
+          <Route path="propection" element={<AdminPropection />} />
           <Route path="verifications" element={<AdminVerificationsPage />} />
           <Route path="verification/:producerId" element={<AdminVerificationDetail />} />
           <Route path="organismes" element={<AdminCertBodies />} />

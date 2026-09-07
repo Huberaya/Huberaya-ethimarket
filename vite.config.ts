@@ -11,6 +11,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    // Autorise les hôtes de prévisualisation (tunnels/proxy) en développement
+    allowedHosts: true,
   },
   test: {
     globals: true,
