@@ -29,3 +29,6 @@ data-pipeline/raw/
 !data/*.csv
 __pycache__/
 *.pyc
+
+# Le dépôt utilise bun.lock comme source de vérité
+package-lock.json
